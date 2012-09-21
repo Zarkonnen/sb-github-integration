@@ -1,0 +1,16 @@
+{
+  "headerVersion": 1,
+  "pluginVersion": "1.0.0",
+  "builderMinVersion": "2.0.1",
+  "builderMaxVersion": "2.*",
+  "identifier": "github_integration",
+  "name": "GitHub Integration",
+  "description": "Store your tests on GitHub.",
+  "description_de": "Speicher deine Testskripts auf GitHub.",
+  "siteUrl": "https://github.com/Zarkonnen/sb-github-integration",
+  "shutdownFunction": "github_integration.shutdown",
+  "icon": "icon.png",
+  "load": [
+    "plugin.js"
+  ]
+}
