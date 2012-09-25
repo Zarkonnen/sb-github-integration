@@ -11,6 +11,8 @@ m.__github_integration_connection_error = "Unable to connect to GitHub: {0}";
 m.__github_integration_browse = "Browse GitHub";
 m.__github_integration_repos = "{0}'s Repositories";
 m.__github_integration_loading = "Loading...";
+m.__github_integration_edit_settings = "Settings";
+m.__github_integration_reload = "Reload";
 // de
 m = builder.translate.locales['de'].mapping;
 m.__github_integration_settings = "GitHub Integration Einstellungen";
@@ -20,6 +22,8 @@ m.__github_integration_connection_error = "Verbindung zu GitHub fehlgeschlagen: 
 m.__github_integration_browse = "Skript von GitHub";
 m.__github_integration_repos = "Repositorys von {0}";
 m.__github_integration_loading = "Lade...";
+m.__github_integration_edit_settings = "Einstellungen";
+m.__github_integration_reload = "Neu laden";
 
 
 github_integration.shutdown = function() {
@@ -77,7 +81,7 @@ github_integration.settingspanel = {};
 /** The dialog. */
 github_integration.settingspanel.dialog = null;
 
-github_integration.settingspanel.show = function(callback) {
+github_integration.settingspanel.show = function(callback, cancelCallback) {
   if (github_integration.settingspanel.dialog) { return; }
   jQuery('#edit-rc-connecting').hide();
   var credentials = github_integration.getCredentials();
@@ -103,6 +107,7 @@ github_integration.settingspanel.show = function(callback) {
       }}, _t('ok')),
       newNode('a', {'href': '#', 'class': 'button', 'id': 'github_integration-cancel', 'click': function() {
         github_integration.settingspanel.hide();
+        if (cancelCallback) { cancelCallback(); }
       }}, _t('cancel'))
     );
   builder.dialogs.show(github_integration.settingspanel.dialog);
@@ -140,6 +145,12 @@ github_integration.gitpanel.doShow = function() {
     github_integration.gitpanel.dialog = newNode('div', {'class': 'dialog'},
       newNode('h3', _t('__github_integration_repos', github_integration.getCredentials().username)),
       newNode('div', {'id': 'repo-list-loading'}, _t('__github_integration_loading'), newNode('img', {'src': "img/loading.gif"})),
+      newNode('div', {'id': 'repo-list-options', 'style': "display: none; margin-bottom: 8px;"},
+        newNode('a', {'href': '#', 'click': github_integration.gitpanel.editSettings}, _t('__github_integration_edit_settings')),
+        newNode('a', {'href': '#', 'style': "float: right;", 'click': function() { github_integration.gitpanel.load(true); }},
+          newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'title': _t('__github_integration_reload')})
+        )
+      ),
       newNode('ul', {'id': 'repo-list', 'style': "display: block; overflow: auto; height: 300px; margin-bottom: 8px;"}),
       newNode('a', {'href': '#', 'class': 'button', 'id': 'repo-list-close', 'click': function() {
         github_integration.gitpanel.hide();
@@ -148,6 +159,11 @@ github_integration.gitpanel.doShow = function() {
     builder.dialogs.show(github_integration.gitpanel.dialog);
   }
   github_integration.gitpanel.load(/*reload*/ github_integration.getCredentials().username != github_integration.lastLoadUsername);
+};
+
+github_integration.gitpanel.editSettings = function() {
+  github_integration.gitpanel.hide();
+  github_integration.settingspanel.show(github_integration.gitpanel.show, github_integration.gitpanel.show);
 };
 
 github_integration.gitpanel.hide = function() {
@@ -159,6 +175,7 @@ github_integration.gitpanel.load = function(reload) {
   if (github_integration.repos.state == github_integration.LOADED && !reload) {
     github_integration.gitpanel.populateList();
     jQuery('#repo-list-loading').hide();
+    jQuery('#repo-list-options').show();
   } else {
     github_integration.lastLoadUsername = github_integration.getCredentials().username;
     github_integration.repos.state = github_integration.LOADING;
@@ -180,6 +197,7 @@ github_integration.gitpanel.load = function(reload) {
         });
       }
       github_integration.gitpanel.populateList();
+      jQuery('#repo-list-options').show();
     },
     /*error*/ function(jqXHR, textStatus, errorThrown) {
       alert(_t('__github_integration_connection_error', errorThrown));
@@ -215,7 +233,7 @@ github_integration.send = function(path, success, error) {
   var credentials = github_integration.getCredentials();
   jQuery.ajax({
     "headers": {"Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
-    "url": "https://api.github.com/" + path,
+    "url": "https://api.github.com/" + path + "?" + Math.random(),
     "success": success,
     "error": function(jqXHR, textStatus, errorThrown) {
       if (error) {
