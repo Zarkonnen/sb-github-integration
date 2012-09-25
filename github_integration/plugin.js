@@ -26,18 +26,50 @@ github_integration.shutdown = function() {
 
 };
 
+github_integration.loginManager = Components.classes["@mozilla.org/login-manager;1"].getService(Components.interfaces.nsILoginManager);
+
+github_integration.loginInfo = new Components.Constructor(
+  "@mozilla.org/login-manager/loginInfo;1",
+  Components.interfaces.nsILoginInfo,
+  "init"
+);
+
 github_integration.getCredentials = function() {
-  return {
-    username:
-      (bridge.prefManager.prefHasUserValue("extensions.seleniumbuilder.plugins.github_integration.username") ? bridge.prefManager.getCharPref("extensions.seleniumbuilder.plugins.github_integration.username") : ""),
-    password:
-      (bridge.prefManager.prefHasUserValue("extensions.seleniumbuilder.plugins.github_integration.password") ? bridge.prefManager.getCharPref("extensions.seleniumbuilder.plugins.github_integration.password") : "")
-  };
+  var logins = github_integration.loginManager.findLogins(
+    {},
+    /*hostname*/      'chrome://seleniumbuilder',
+    /*formSubmitURL*/ null,
+    /*httprealm*/     'GitHub Integration User Login'
+  );
+  
+  for (var i = 0; i < logins.length; i++) {
+    return {'username': logins[i].username, 'password': logins[i].password};
+  }
+  return {'username': "", 'password': ""};
 };
 
 github_integration.setCredentials = function(username, password) {
-  bridge.prefManager.setCharPref("extensions.seleniumbuilder.plugins.github_integration.username", username);
-  bridge.prefManager.setCharPref("extensions.seleniumbuilder.plugins.github_integration.password", password);
+  var logins = github_integration.loginManager.findLogins(
+    {},
+    /*hostname*/      'chrome://seleniumbuilder',
+    /*formSubmitURL*/ null,
+    /*httprealm*/     'GitHub Integration User Login'
+  );
+  
+  for (var i = 0; i < logins.length; i++) {
+    github_integration.loginManager.removeLogin(logins[i]);
+  }
+  
+  var loginInfo = new github_integration.loginInfo(
+    /*hostname*/      'chrome://seleniumbuilder',
+    /*formSubmitURL*/ null,
+    /*httprealm*/     'GitHub Integration User Login',
+    /*username*/      username,
+    /*password*/      password,
+    /*usernameField*/ "",
+    /*passwordField*/ ""
+  );
+  github_integration.loginManager.addLogin(loginInfo);
 };
 
 
@@ -79,6 +111,7 @@ github_integration.settingspanel.show = function(callback) {
 github_integration.settingspanel.hide = function() {
   jQuery(github_integration.settingspanel.dialog).remove();
   github_integration.settingspanel.dialog = null;
+  github_integration.forceShowSettingsPanel = false;
 };
 
 builder.gui.menu.addItem('file', _t('__github_integration_settings'), 'file-github_integration-settings', github_integration.settingspanel.show);
@@ -88,12 +121,14 @@ github_integration.LOADING   = 1;
 github_integration.LOADED    = 2;
 
 github_integration.repos = {"state": github_integration.UNLOADED, "list": []};
+github_integration.lastLoadUsername = '';
+github_integration.forceShowSettingsPanel = false;
 
 github_integration.gitpanel = {};
 github_integration.gitpanel.dialog = null;
 github_integration.gitpanel.show = function() {
   var credentials = github_integration.getCredentials();
-  if (!credentials.username || !credentials.password) {
+  if (!credentials.username || !credentials.password || github_integration.forceShowSettingsPanel) {
     github_integration.settingspanel.show(github_integration.gitpanel.doShow);
   } else {
     github_integration.gitpanel.doShow();
@@ -105,14 +140,14 @@ github_integration.gitpanel.doShow = function() {
     github_integration.gitpanel.dialog = newNode('div', {'class': 'dialog'},
       newNode('h3', _t('__github_integration_repos', github_integration.getCredentials().username)),
       newNode('div', {'id': 'repo-list-loading'}, _t('__github_integration_loading'), newNode('img', {'src': "img/loading.gif"})),
-      newNode('ul', {'id': 'repo-list'}),
+      newNode('ul', {'id': 'repo-list', 'style': "display: block; overflow: auto; height: 300px; margin-bottom: 8px;"}),
       newNode('a', {'href': '#', 'class': 'button', 'id': 'repo-list-close', 'click': function() {
         github_integration.gitpanel.hide();
       }}, _t('close'))
     );
     builder.dialogs.show(github_integration.gitpanel.dialog);
   }
-  github_integration.gitpanel.load(false);
+  github_integration.gitpanel.load(/*reload*/ github_integration.getCredentials().username != github_integration.lastLoadUsername);
 };
 
 github_integration.gitpanel.hide = function() {
@@ -123,13 +158,14 @@ github_integration.gitpanel.hide = function() {
 github_integration.gitpanel.load = function(reload) {
   if (github_integration.repos.state == github_integration.LOADED && !reload) {
     github_integration.gitpanel.populateList();
+    jQuery('#repo-list-loading').hide();
   } else {
+    github_integration.lastLoadUsername = github_integration.getCredentials().username;
     github_integration.repos.state = github_integration.LOADING;
     jQuery('#repo-list-loading').show();
     github_integration.send("user/repos", function(data) {
       github_integration.repos.state = github_integration.LOADED;
       jQuery('#repo-list-loading').hide();
-      //dump(JSON.stringify(data));
       var username = github_integration.getCredentials().username;
       var l = [];
       github_integration.repos.list = l;
@@ -149,6 +185,7 @@ github_integration.gitpanel.load = function(reload) {
       alert(_t('__github_integration_connection_error', errorThrown));
       github_integration.repos.state = github_integration.UNLOADED;
       github_integration.gitpanel.hide();
+      github_integration.forceShowSettingsPanel = true;
     });
   }
 };
