@@ -128,6 +128,7 @@ github_integration.LOADED    = 2;
 github_integration.repos = {"state": github_integration.UNLOADED, "list": []};
 github_integration.lastLoadUsername = '';
 github_integration.forceShowSettingsPanel = false;
+github_integration.openPaths = {};
 
 github_integration.gitpanel = {};
 github_integration.gitpanel.dialog = null;
@@ -193,14 +194,14 @@ github_integration.gitpanel.load = function(reload) {
           'full_name': data[i].full_name,
           'writeable': data[i].permissions.push,
           'state': github_integration.UNLOADED,
-          'tree': null
+          'branches': [],
+          'path': username.replace('/', "-SLASH-") + '/' + data[i].full_name.replace('/', "-SLASH-")
         });
       }
       github_integration.gitpanel.populateList();
       jQuery('#repo-list-options').show();
     },
     /*error*/ function(jqXHR, textStatus, errorThrown) {
-      alert(_t('__github_integration_connection_error', errorThrown));
       github_integration.repos.state = github_integration.UNLOADED;
       github_integration.gitpanel.hide();
       github_integration.forceShowSettingsPanel = true;
@@ -217,7 +218,7 @@ github_integration.gitpanel.populateList = function() {
 
 github_integration.gitpanel.makeRepoEntry = function(e) {
   return newNode('li',
-    newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.toggleRepoEntry(e.id, e.full_name);}},
+    newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.toggleRepoEntry(e);}},
       newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'closed.png'), 'id': 'repo-list-' + e.id + '-triangle'}),
       e.name
     ),
@@ -225,8 +226,65 @@ github_integration.gitpanel.makeRepoEntry = function(e) {
   );
 };
 
-github_integration.gitpanel.toggleRepoEntry = function(id, full_name) {
-  jQuery('#repo-list-' + id + '-triangle')[0].src = builder.plugins.getResourcePath('github_integration', 'open.png');
+github_integration.gitpanel.toggleRepoEntry = function(e) {
+  if (github_integration.openPaths[e.path]) {
+    github_integration.openPaths[e.path] = false;
+    jQuery('#repo-list-' + e.id + '-triangle')[0].src = builder.plugins.getResourcePath('github_integration', 'closed.png');
+    jQuery('#repo-list-' + e.id + '-ul').html('');
+  } else {
+    if (e.state == github_integration.UNLOADED) {
+      github_integration.gitpanel.reloadRepoEntry(e);
+    } else if (e.state == github_integration.LOADED) {
+      github_integration.gitpanel.populateRepoEntry(e);
+    }
+  }
+};
+
+github_integration.gitpanel.reloadRepoEntry = function(e) {
+  e.state = github_integration.LOADING;
+  jQuery('#repo-list-' + e.id + '-triangle')[0].src = "img/loading.gif";
+  github_integration.send("repos/" + e.full_name + "/branches",
+    /*success*/ function(data) {
+      e.state = github_integration.LOADED;
+      var l = [];
+      e.branches = l;
+      for (var i = 0; i < data.length; i++) {
+        l.push({
+          'name': data[i].name,
+          'id': e.id + '-SLASH-' + data[i].name,
+          'state': github_integration.UNLOADED,
+          'tree': null,
+          'path': e.path + '/' + data[i].name,
+          'sha': data[i].commit.sha
+        });
+      }
+      github_integration.gitpanel.populateRepoEntry(e);
+    },
+    /*error*/ function(data) {
+      github_integration.repos.state = github_integration.UNLOADED;
+      github_integration.gitpanel.hide();
+      github_integration.forceShowSettingsPanel = true;
+    }
+  );
+};
+
+github_integration.gitpanel.populateRepoEntry = function(e) {
+  jQuery('#repo-list-' + e.id + '-triangle')[0].src = builder.plugins.getResourcePath('github_integration', 'open.png');
+  github_integration.openPaths[e.path] = true;
+  jQuery('#repo-list-' + e.id + '-ul').html('');
+  for (var i = 0; i < e.branches.length; i++) {
+    jQuery('#repo-list-' + e.id + '-ul').append(github_integration.gitpanel.makeBranchEntry(e, e.branches[i]));
+  }
+};
+
+github_integration.gitpanel.makeBranchEntry = function(e, b) {
+  return newNode('li', {'style': "padding-left: 12px;"},
+    newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.toggleBranchEntry(e, b);}},
+      newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'closed.png'), 'id': 'repo-list-' + b.id + '-triangle'}),
+      b.name
+    ),
+    newNode('ul', {'id': 'repo-list-' + b.id + '-ul'})
+  );
 };
 
 github_integration.send = function(path, success, error) {
@@ -238,9 +296,8 @@ github_integration.send = function(path, success, error) {
     "error": function(jqXHR, textStatus, errorThrown) {
       if (error) {
         error(jqXHR, textStatus, errorThrown);
-      } else {
-        alert(_t('__github_integration_connection_error', errorThrown));
       }
+      alert(_t('__github_integration_connection_error', errorThrown));
     }
   });
 };
