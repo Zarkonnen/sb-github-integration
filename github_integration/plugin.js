@@ -222,6 +222,9 @@ github_integration.gitpanel.makeRepoEntry = function(e) {
       newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'closed.png'), 'id': 'repo-list-' + e.id + '-triangle'}),
       e.name
     ),
+    newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.reloadRepoEntry(e);}},
+      newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'id': 'repo-list-' + e.id + '-reload', 'style': "margin-left: 5px; display: none;"})
+    ),
     newNode('ul', {'id': 'repo-list-' + e.id + '-ul'})
   );
 };
@@ -230,6 +233,7 @@ github_integration.gitpanel.toggleRepoEntry = function(e) {
   if (github_integration.openPaths[e.path]) {
     github_integration.openPaths[e.path] = false;
     jQuery('#repo-list-' + e.id + '-triangle')[0].src = builder.plugins.getResourcePath('github_integration', 'closed.png');
+    jQuery('#repo-list-' + e.id + '-reload').hide();
     jQuery('#repo-list-' + e.id + '-ul').html('');
   } else {
     if (e.state == github_integration.UNLOADED) {
@@ -243,6 +247,7 @@ github_integration.gitpanel.toggleRepoEntry = function(e) {
 github_integration.gitpanel.reloadRepoEntry = function(e) {
   e.state = github_integration.LOADING;
   jQuery('#repo-list-' + e.id + '-triangle')[0].src = "img/loading.gif";
+  jQuery('#repo-list-' + e.id + '-reload').hide();
   github_integration.send("repos/" + e.full_name + "/branches",
     /*success*/ function(data) {
       e.state = github_integration.LOADED;
@@ -269,6 +274,7 @@ github_integration.gitpanel.reloadRepoEntry = function(e) {
 };
 
 github_integration.gitpanel.populateRepoEntry = function(e) {
+  jQuery('#repo-list-' + e.id + '-reload').show();
   jQuery('#repo-list-' + e.id + '-triangle')[0].src = builder.plugins.getResourcePath('github_integration', 'open.png');
   github_integration.openPaths[e.path] = true;
   jQuery('#repo-list-' + e.id + '-ul').html('');
