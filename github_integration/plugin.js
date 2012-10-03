@@ -365,6 +365,21 @@ github_integration.gitpanel.makeBlobEntry = function(e, parent, blob) {
   );
 };
 
+github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
+  github_integration.send("repos/" + e.full_name + "/git/blobs/" + blob.sha,
+    /* success */ function(data) {
+      if (data.encoding == 'utf-8') {
+        data = data.content;
+      } else {
+        data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
+      }
+      if (builder.io.loadUnknownText(data, { 'where': 'github', 'path': { 'repo': e, 'blob': blob } })) {
+        github_integration.gitpanel.hide();
+      }
+    }
+  );
+};
+
 github_integration.send = function(path, success, error) {
   var credentials = github_integration.getCredentials();
   jQuery.ajax({
