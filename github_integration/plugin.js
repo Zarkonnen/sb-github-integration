@@ -27,7 +27,7 @@ m.__github_integration_reload = "Neu laden";
 
 
 github_integration.shutdown = function() {
-
+  
 };
 
 github_integration.loginManager = Components.classes["@mozilla.org/login-manager;1"].getService(Components.interfaces.nsILoginManager);
@@ -195,7 +195,7 @@ github_integration.gitpanel.load = function(reload) {
           'writeable': data[i].permissions.push,
           'state': github_integration.UNLOADED,
           'branches': [],
-          'path': username.replace('/', "-SLASH-") + '/' + data[i].full_name.replace('/', "-SLASH-")
+          'path': username + '/' + data[i].full_name
         });
       }
       github_integration.gitpanel.populateList();
@@ -396,7 +396,8 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
       } else {
         data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
       }
-      if (builder.io.loadUnknownText(data, { 'where': 'github', 'path': { 'repo': e, 'blob': blob } })) {
+      alert(blob.path);
+      if (builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path })) {
         github_integration.gitpanel.hide();
       }
     }
