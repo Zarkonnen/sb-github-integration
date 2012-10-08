@@ -3,7 +3,7 @@ var github_integration = {};
 
 // Strings
 // en-US
-var m = builder.translate.locales['en-US'].mapping;
+var m = builder.translate.locales['en'].mapping;
 m.__github_integration_settings = "GitHub Integration Settings";
 m.__github_integration_username = "Username";
 m.__github_integration_password = "Password";
