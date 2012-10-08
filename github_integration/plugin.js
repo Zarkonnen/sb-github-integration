@@ -13,6 +13,8 @@ m.__github_integration_repos = "{0}'s Repositories";
 m.__github_integration_loading = "Loading...";
 m.__github_integration_edit_settings = "Settings";
 m.__github_integration_reload = "Reload";
+m.__github_integration_add_from_github = "Add script from GitHub";
+
 // de
 m = builder.translate.locales['de'].mapping;
 m.__github_integration_settings = "GitHub Integration Einstellungen";
@@ -24,7 +26,7 @@ m.__github_integration_repos = "Repositorys von {0}";
 m.__github_integration_loading = "Lade...";
 m.__github_integration_edit_settings = "Einstellungen";
 m.__github_integration_reload = "Neu laden";
-
+m.__github_integration_add_from_github = "Skript von GitHub hinzufügen";
 
 github_integration.shutdown = function() {
   
@@ -119,7 +121,10 @@ github_integration.settingspanel.hide = function() {
   github_integration.forceShowSettingsPanel = false;
 };
 
-builder.gui.menu.addItem('file', _t('__github_integration_settings'), 'file-github_integration-settings', github_integration.settingspanel.show);
+builder.registerPostLoadHook(function() {
+  builder.gui.menu.addItem('file', _t('__github_integration_settings'), 'file-github_integration-settings', github_integration.settingspanel.show);
+  builder.gui.menu.addItem('suite', _t('__github_integration_add_from_github'), 'suite-github_integration_add_from_github', function() { github_integration.gitpanel.show(github_integration.ADD); });
+});
 
 github_integration.UNLOADED  = 0;
 github_integration.LOADING   = 1;
@@ -130,18 +135,29 @@ github_integration.lastLoadUsername = '';
 github_integration.forceShowSettingsPanel = false;
 github_integration.openPaths = {};
 
+github_integration.OPEN = 0;
+github_integration.ADD = 1;
+github_integration.SAVE = 2;
+
 github_integration.gitpanel = {};
 github_integration.gitpanel.dialog = null;
-github_integration.gitpanel.show = function() {
+github_integration.gitpanel.mode = github_integration.OPEN;
+
+github_integration.gitpanel.show = function(mode) {
+  mode = mode || github_integration.OPEN;
   var credentials = github_integration.getCredentials();
   if (!credentials.username || !credentials.password || github_integration.forceShowSettingsPanel) {
-    github_integration.settingspanel.show(github_integration.gitpanel.doShow);
+    github_integration.settingspanel.show(function() { github_integration.gitpanel.doShow(mode); });
   } else {
-    github_integration.gitpanel.doShow();
+    github_integration.gitpanel.doShow(mode);
   }
 };
 
-github_integration.gitpanel.doShow = function() {
+github_integration.gitpanel.doShow = function(mode) {
+  if (github_integration.gitpanel.mode != mode) {
+    github_integration.gitpanel.hide();
+  }
+  github_integration.gitpanel.mode = mode;
   if (github_integration.gitpanel.dialog === null) {
     github_integration.gitpanel.dialog = newNode('div', {'class': 'dialog'},
       newNode('h3', _t('__github_integration_repos', github_integration.getCredentials().username)),
@@ -396,7 +412,7 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
       } else {
         data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
       }
-      if (builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path })) {
+      if (builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path }, null, github_integration.gitpanel.mode == github_integration.ADD)) {
         github_integration.gitpanel.hide();
       }
     }
@@ -419,4 +435,3 @@ github_integration.send = function(path, success, error) {
 };
 
 builder.gui.addStartupEntry(_t('__github_integration_browse'), 'startup-browse-github', function() { github_integration.gitpanel.show(); });
-
