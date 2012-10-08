@@ -396,7 +396,6 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
       } else {
         data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
       }
-      alert(blob.path);
       if (builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path })) {
         github_integration.gitpanel.hide();
       }
