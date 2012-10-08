@@ -2,7 +2,7 @@
 var github_integration = {};
 
 // Strings
-// en-US
+// en
 var m = builder.translate.locales['en'].mapping;
 m.__github_integration_settings = "GitHub Integration Settings";
 m.__github_integration_username = "Username";
@@ -145,12 +145,12 @@ github_integration.gitpanel.doShow = function() {
   if (github_integration.gitpanel.dialog === null) {
     github_integration.gitpanel.dialog = newNode('div', {'class': 'dialog'},
       newNode('h3', _t('__github_integration_repos', github_integration.getCredentials().username)),
-      newNode('div', {'id': 'repo-list-loading'}, _t('__github_integration_loading'), newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'spinner.gif'), 'style': "vertical-align: middle;"})),
       newNode('div', {'id': 'repo-list-options', 'style': "display: none; margin-bottom: 8px;"},
         newNode('a', {'href': '#', 'click': github_integration.gitpanel.editSettings}, _t('__github_integration_edit_settings')),
         newNode('a', {'href': '#', 'style': "float: right;", 'click': function() { github_integration.gitpanel.load(true); }},
           newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'title': _t('__github_integration_reload'), 'style': "vertical-align: middle;"})
-        )
+        ),
+        newNode('span', {'id': 'repo-list-loading', 'style': "float: right;"}, _t('__github_integration_loading'), newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'spinner.gif'), 'style': "vertical-align: middle;"}))
       ),
       newNode('ul', {'id': 'repo-list', 'style': "display: block; overflow: auto; height: 300px; margin-bottom: 8px;"}),
       newNode('a', {'href': '#', 'class': 'button', 'id': 'repo-list-close', 'click': function() {
@@ -214,6 +214,13 @@ github_integration.gitpanel.populateList = function() {
   for (var i = 0; i < github_integration.repos.list.length; i++) {
     jQuery('#repo-list').append(github_integration.gitpanel.makeRepoEntry(github_integration.repos.list[i]));
   }
+  for (var i = 0; i < github_integration.repos.list.length; i++) {
+    var e = github_integration.repos.list[i];
+    if (github_integration.openPaths[e.path]) {
+      github_integration.openPaths[e.path] = false;
+      github_integration.gitpanel.toggleRepoEntry(e);
+    }
+  }
 };
 
 github_integration.gitpanel.makeRepoEntry = function(e) {
@@ -223,7 +230,7 @@ github_integration.gitpanel.makeRepoEntry = function(e) {
       e.name
     ),
     newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.reloadRepoEntry(e);}},
-      newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'id': 'repo-list-' + e.id + '-reload', 'style': "margin-left: 5px; display: none; vertical-align: middle;"})
+      newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'id': 'repo-list-' + e.id + '-reload', 'style': "margin-left: 5px; display: none; vertical-align: middle;", 'title': _t('__github_integration_reload')})
     ),
     newNode('ul', {'id': 'repo-list-' + e.id + '-ul'})
   );
@@ -281,6 +288,14 @@ github_integration.gitpanel.populateRepoEntry = function(e) {
   for (var i = 0; i < e.branches.length; i++) {
     jQuery('#repo-list-' + e.id + '-ul').append(github_integration.gitpanel.makeTreeEntry(e, null, e.branches[i]));
   }
+  
+  for (var i = 0; i < e.branches.length; i++) {
+    var b = e.branches[i];
+    if (github_integration.openPaths[b.path]) {
+      github_integration.openPaths[b.path] = false;
+      github_integration.gitpanel.toggleTreeEntry(e, null, b);
+    }
+  }
 };
 
 github_integration.gitpanel.makeTreeEntry = function(e, parent, tree) {
@@ -290,7 +305,7 @@ github_integration.gitpanel.makeTreeEntry = function(e, parent, tree) {
       tree.name
     ),
     newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.reloadTreeEntry(e, parent, tree);}},
-      newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'id': 'repo-list-' + tree.id + '-reload', 'style': "margin-left: 5px; display: none; vertical-align: middle;"})
+      newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'id': 'repo-list-' + tree.id + '-reload', 'style': "margin-left: 5px; display: none; vertical-align: middle;", 'title': _t('__github_integration_reload')})
     ),
     newNode('ul', {'id': 'repo-list-' + tree.id + '-ul'})
   );
@@ -348,10 +363,18 @@ github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
   jQuery('#repo-list-' + tree.id + '-ul').html('');
   for (var i = 0; i < tree.children.length; i++) {
     if (tree.children[i].type == 'tree') {
-      jQuery('#repo-list-' + tree.id + '-ul').append(github_integration.gitpanel.makeTreeEntry(e, parent, tree.children[i]));
+      jQuery('#repo-list-' + tree.id + '-ul').append(github_integration.gitpanel.makeTreeEntry(e, tree, tree.children[i]));
     }
     if (tree.children[i].type == 'blob') {
-      jQuery('#repo-list-' + tree.id + '-ul').append(github_integration.gitpanel.makeBlobEntry(e, parent, tree.children[i]));
+      jQuery('#repo-list-' + tree.id + '-ul').append(github_integration.gitpanel.makeBlobEntry(e, tree, tree.children[i]));
+    }
+  }
+  
+  for (var i = 0; i < tree.children.length; i++) {
+    var c = tree.children[i];
+    if (github_integration.openPaths[c.path]) {
+      github_integration.openPaths[c.path] = false;
+      github_integration.gitpanel.toggleTreeEntry(e, tree, c);
     }
   }
 };
