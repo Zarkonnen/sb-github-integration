@@ -132,6 +132,8 @@ github_integration.settingspanel.hide = function() {
 };
 
 builder.registerPostLoadHook(function() {  
+  builder.gui.addStartupEntry(_t('__github_integration_browse'), 'startup-browse-github', function() { github_integration.gitpanel.show(); });
+  
   builder.gui.menu.addItem('file', _t('__github_integration_save_menu'), 'file-github_integration-save', function() {
     github_integration.gitpanel.scriptToSave = builder.getScript();
     github_integration.gitpanel.show(github_integration.SAVE);
@@ -616,5 +618,3 @@ github_integration.send = function(path, success, error, credentials, type, data
   if (data) { aj.data = data; }
   jQuery.ajax(aj);
 };
-
-builder.gui.addStartupEntry(_t('__github_integration_browse'), 'startup-browse-github', function() { github_integration.gitpanel.show(); });
