@@ -17,6 +17,8 @@ m.__github_integration_add_from_github = "Add script from GitHub";
 m.__github_integration_save_menu = "Save script to GitHub";
 m.__github_integration_save = "Save";
 m.__github_integration_enter_name = "Please enter a name for the script to save under.";
+m.__github_integration_pwd_prompt = "Please enter the GitHub password for user {0}.";
+m.__github_integration_saving = "Saving...";
 
 // de
 m = builder.translate.locales['de'].mapping;
@@ -33,6 +35,8 @@ m.__github_integration_add_from_github = "Skript von GitHub hinzufügen";
 m.__github_integration_save_menu = "Skript auf GitHub speichern";
 m.__github_integration_save = "Speichern";
 m.__github_integration_enter_name = "Bitte geben Sie einen Namen für das Skript an.";
+m.__github_integration_pwd_prompt = "GitHub-Passwort für den Benutzer \"{0}\"";
+m.__github_integration_saving = "Skript wird gespeichert...";
 
 github_integration.shutdown = function() {
   
@@ -135,9 +139,7 @@ builder.registerPostLoadHook(function() {
   
   builder.gui.menu.addItem('suite', _t('__github_integration_add_from_github'), 'suite-github_integration_add_from_github', function() {
     github_integration.gitpanel.show(github_integration.ADD);
-  });
-  
-  builder.gui.menu.addItem('file', _t('__github_integration_settings'), 'file-github_integration-settings', github_integration.settingspanel.show);
+  });  
 });
 
 github_integration.UNLOADED  = 0;
@@ -152,11 +154,14 @@ github_integration.openPaths = {};
 github_integration.OPEN = 0;
 github_integration.ADD = 1;
 github_integration.SAVE = 2;
+github_integration.VIEW = 3;
 
 github_integration.gitpanel = {};
 github_integration.gitpanel.dialog = null;
 github_integration.gitpanel.mode = github_integration.OPEN;
 github_integration.gitpanel.scriptToSave = null;
+github_integration.gitpanel.onReloadCallback = null;
+github_integration.gitpanel.onReloadCallbackPath = null;
 
 github_integration.gitpanel.show = function(mode) {
   mode = mode || github_integration.OPEN;
@@ -176,10 +181,10 @@ github_integration.gitpanel.doShow = function(mode) {
   if (github_integration.gitpanel.dialog === null) {
     github_integration.gitpanel.dialog = newNode('div', {'class': 'dialog'},
       newNode('h3', _t('__github_integration_repos', github_integration.getCredentials().username)),
-      newNode('div', {'id': 'repo-list-options', 'style': "display: none; margin-bottom: 8px;"},
-        newNode('a', {'href': '#', 'click': github_integration.gitpanel.editSettings}, _t('__github_integration_edit_settings')),
+      newNode('div', {'id': 'repo-list-options', 'style': "margin-bottom: 8px;"},
+        newNode('a', {'href': '#', 'click': github_integration.gitpanel.editSettings, 'id': 'repo-list-settings', 'style': "display: none;"}, _t('__github_integration_edit_settings')),
         newNode('a', {'href': '#', 'style': "float: right;", 'click': function() { github_integration.gitpanel.load(true); }},
-          newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'title': _t('__github_integration_reload'), 'style': "vertical-align: middle;"})
+          newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'title': _t('__github_integration_reload'), 'style': "vertical-align: middle; display: none;", 'id': 'repo-list-reload'})
         ),
         newNode('span', {'id': 'repo-list-loading', 'style': "float: right;"}, _t('__github_integration_loading'), newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'spinner.gif'), 'style': "vertical-align: middle;"}))
       ),
@@ -207,7 +212,8 @@ github_integration.gitpanel.load = function(reload) {
   if (github_integration.repos.state == github_integration.LOADED && !reload) {
     github_integration.gitpanel.populateList();
     jQuery('#repo-list-loading').hide();
-    jQuery('#repo-list-options').show();
+    jQuery('#repo-list-settings').show();
+    jQuery('#repo-list-reload').show();
   } else {
     github_integration.lastLoadUsername = github_integration.getCredentials().username;
     github_integration.repos.state = github_integration.LOADING;
@@ -230,7 +236,9 @@ github_integration.gitpanel.load = function(reload) {
         });
       }
       github_integration.gitpanel.populateList();
-      jQuery('#repo-list-options').show();
+      jQuery('#repo-list-loading').hide();
+      jQuery('#repo-list-settings').show();
+      jQuery('#repo-list-reload').show();
     },
     /*error*/ function(jqXHR, textStatus, errorThrown) {
       github_integration.repos.state = github_integration.UNLOADED;
@@ -333,7 +341,7 @@ github_integration.gitpanel.makeTreeEntry = function(e, parent, tree) {
   return newNode('li', {'style': "padding-left: 12px;"},
     newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.toggleTreeEntry(e, parent, tree);}},
       newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'closed.png'), 'id': 'repo-list-' + tree.id + '-triangle', 'style': "vertical-align: middle;"}),
-      tree.name
+      newNode('span', {'id': 'repo-list-' + tree.id + '-name'}, tree.name)
     ),
     newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.reloadTreeEntry(e, parent, tree);}},
       newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'reload.png'), 'id': 'repo-list-' + tree.id + '-reload', 'style': "margin-left: 5px; display: none; vertical-align: middle;", 'title': _t('__github_integration_reload')})
@@ -373,7 +381,7 @@ github_integration.gitpanel.reloadTreeEntry = function(e, parent, tree) {
           'state': github_integration.UNLOADED,
           'children': [],
           'path': tree.path + '/' + data.tree[i].path,
-          'id': e.id + '-SLASH-' + data.tree[i].sha,
+          'id': e.id + '-SLASH-' + data.tree[i].sha
         };
         tree.children.push(c);
       }
@@ -394,22 +402,29 @@ github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
   jQuery('#repo-list-' + tree.id + '-ul').html('');
   
   if (github_integration.gitpanel.mode == github_integration.SAVE) {
-    var txt = jQuery('#github-save-input').val();
+    var txt = jQuery('#github-save-input').val() || github_integration.gitpanel.scriptToSave.seleniumVersion.io.defaultRepresentationExtension;
     var sel = jQuery('#github-save-input')[0] ? jQuery('#github-save-input')[0].selectionStart : 0;
     var selEnd = jQuery('#github-save-input')[0] ? jQuery('#github-save-input')[0].selectionEnd : 0;
     jQuery('#github-save-li').remove();
     jQuery('#repo-list-' + tree.id + '-ul').append(newNode('li', { 'id': 'github-save-li', 'style': "padding-left: 12px;" },
-      newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'file.png'), 'id': 'repo-list-saving-file', 'style': "vertical-align: middle;"}),
-      newNode('input', { 'id': 'github-save-input', 'type': 'text', 'value': txt || "" }),
-      newNode('a', { 'href': '#', 'class': 'button', 'style': "margin-left: 5px;", 'click': function() {
-        var txt = jQuery('#github-save-input').val();
-        if (!txt) {
-          alert(_t('__github_integration_enter_name'));
-        } else {
-          github_integration.saveFile(github_integration.gitpanel.scriptToSave, tree.path + '/' + txt);
-        }
-      }},
-      _t('__github_integration_save'))
+      newNode('span', {'id': 'github-save-li-ui'},
+        newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'file.png'), 'id': 'repo-list-saving-file', 'style': "vertical-align: middle;"}),
+        newNode('input', { 'id': 'github-save-input', 'type': 'text', 'value': txt || "" }),
+        newNode('a', { 'href': '#', 'class': 'button', 'style': "margin-left: 5px;", 'click': function() {
+            var txt = jQuery('#github-save-input').val();
+            if (!txt) {
+              alert(_t('__github_integration_enter_name'));
+            } else {
+              github_integration.saveFile(github_integration.gitpanel.scriptToSave, tree.path + '/' + txt, e);
+            }
+          }},
+          _t('__github_integration_save')
+        )
+      ),
+      newNode('span', {'id': 'github-save-li-saving', 'style': "display: none;"},
+        newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'spinner.gif'), 'id': 'repo-list-saving-spinner', 'style': "vertical-align: middle;"}),
+        _t('__github_integration_saving')
+      )
     ));
     jQuery('#github-save-input').focus();
     jQuery('#github-save-input')[0].selectionStart = sel;
@@ -432,13 +447,20 @@ github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
       github_integration.gitpanel.toggleTreeEntry(e, tree, c);
     }
   }
+  
+  for (var i = 0; i < tree.children.length; i++) {
+    var c = tree.children[i];
+    if (c.path == github_integration.gitpanel.onReloadCallbackPath) {
+      github_integration.gitpanel.onReloadCallback(c.id);
+    }
+  }
 };
 
 github_integration.gitpanel.makeBlobEntry = function(e, parent, blob) {
   return newNode('li', {'style': "padding-left: 12px;"},
     newNode('a', {'href': '#', 'click': function() {github_integration.gitpanel.openBlobEntry(e, parent, blob);}},
       newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'file.png'), 'id': 'repo-list-' + blob.id + '-file', 'style': "vertical-align: middle;"}),
-      blob.name
+      newNode('span', {'id': 'repo-list-' + blob.id + '-name'}, blob.name)
     )
   );
 };
@@ -446,9 +468,9 @@ github_integration.gitpanel.makeBlobEntry = function(e, parent, blob) {
 github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
   if (github_integration.gitpanel.mode == github_integration.SAVE) {
     if (confirm(_t('__github_integration_overwrite_q', blob.path))) {
-      github_integration.saveFile(github_integration.gitpanel.scriptToSave, blob.path);
+      github_integration.saveFile(github_integration.gitpanel.scriptToSave, blob.path, e);
     }
-  } else {
+  } else if (github_integration.gitpanel.mode == github_integration.OPEN || github_integration.gitpanel.mode == github_integration.ADD) {
     github_integration.send("repos/" + e.full_name + "/git/blobs/" + blob.sha,
       /* success */ function(data) {
         if (data.encoding == 'utf-8') {
@@ -464,24 +486,116 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
   }
 };
 
-github_integration.saveFile = function(script, path) {
+github_integration.saveFile = function(script, path, eToReload) {
+  // Switch to view-only mode to prevent user from doing stupid interleaving things.
+  github_integration.gitpanel.mode = github_integration.VIEW;
+  jQuery('#github-save-li-ui').hide();
+  jQuery('#github-save-li-saving').show();
+  jQuery('#repo-list-close').hide();
+  
   // Disassemble path.
-  path = path.split("/");
-  var username = path[0];
-  var owner = path[1];
-  var repo = path[2];
-  var branch = path[3];
-  var name = path[path.length - 1];
+  var pathBits = path.split("/");
+  var username = pathBits[0];
+  var owner = pathBits[1];
+  var repo = pathBits[2];
+  var branch = pathBits[3];
+  var name = pathBits[pathBits.length - 1];
+  var inBranchPath = [];
+  for (var i = 4; i < pathBits.length; i++) {
+    inBranchPath.push(pathBits[i]);
+  }
+  inBranchPath = inBranchPath.join("/");
+
+  // Generate the content to actually upload.
   var txt = script.seleniumVersion.io.getScriptDefaultRepresentation(script, name);
-  alert("saving file " + name + " to branch " + branch + " of repo " + repo + " by " + owner + " through " + username);
-  alert(txt);
+  
+  // The user may have switched GitHub credentials since accessing that file, in which case we have
+  // to ask them for the password for the account the path specifies.
+  var credentials = github_integration.getCredentials();
+  if (credentials.username != username) {
+    var newPwd = prompt(_t('__github_integration_pwd_prompt', credentials.username));
+    if (!newPwd) { return; }
+    credentials = { 'username': username, 'password': newPwd };
+  }
+  
+  // Set up convenience functions for talking to GitHub.
+  var error = function(jqXHR, textStatus, errorThrown) {
+    github_integration.gitpanel.mode = github_integration.SAVE;
+    jQuery('#github-save-li-ui').show();
+    jQuery('#github-save-li-saving').hide();
+    jQuery('#repo-list-close').show();
+  };
+  
+  var get = function(path, success) {
+    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, error, credentials);
+  };
+  
+  var post = function(path, data, success) {
+    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, error, credentials, "POST", JSON.stringify(data));
+  };
+  
+  var patch = function(path, data, success) {
+    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, error, credentials, "PATCH", JSON.stringify(data));
+  };
+  
+  // Get the current commit's tree, patch it with the new/updated file, create a commit, and make
+  // that commit HEAD of the branch.
+  get("branches/" + branch, function(data) {
+    var commitSHA = data.commit.sha;
+    var treeSHA = data.commit.commit.tree.sha;
+    var treeUpdate = {
+      "base_tree": treeSHA,
+      "tree": [
+        {
+          "path": inBranchPath,
+          "mode": "100644",
+          "type": "blob",
+          "content": txt
+        }
+      ]
+    };
+    post("git/trees", treeUpdate, function(data) {
+      var newTreeSHA = data.sha;
+      var commit = {
+        "message": "Committed " + name + ".",
+        "tree": newTreeSHA,
+        "parents": [ commitSHA ]
+      };
+      post("git/commits", commit, function(data) {
+        var newCommitSHA = data.sha;
+        var headUpdate = {
+          "sha": newCommitSHA
+        };
+        patch("git/refs/heads/" + branch, headUpdate, function(data) {
+          script.path = { 'where': 'github', 'path': path };
+          builder.suite.setCurrentScriptSaveRequired(false);
+          builder.gui.suite.update();
+          jQuery('#github-save-li-saving').hide();
+          // Reload the parent in view-only mode to show the newly saved item, then close.
+          if (eToReload) {
+            github_integration.gitpanel.reloadRepoEntry(eToReload);
+            jQuery('#repo-list-close').show();
+            github_integration.gitpanel.onReloadCallbackPath = path;
+            github_integration.gitpanel.onReloadCallback = function(id) {
+              jQuery('#repo-list-' + id + '-name').css('font-weight', 'bold').css('color', 'black')[0].scrollIntoView(true);
+              github_integration.gitpanel.onReloadCallbackPath = null;
+              setTimeout(github_integration.gitpanel.hide, 500);
+            };
+          } else {
+            github_integration.gitpanel.hide();
+          }
+        });
+      });
+    });
+  });
 };
 
-github_integration.send = function(path, success, error) {
-  var credentials = github_integration.getCredentials();
-  jQuery.ajax({
+github_integration.send = function(path, success, error, credentials, type, data) {
+  credentials = credentials || github_integration.getCredentials();
+  var aj = {
+    "type": type || "GET",
     "headers": {"Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
-    "url": "https://api.github.com/" + path + "?" + Math.random(),
+    "url": "https://api.github.com/" + path + ((!type || type == "GET") ? ("?" + Math.random()) : ""),
     "success": success,
     "error": function(jqXHR, textStatus, errorThrown) {
       if (error) {
@@ -489,7 +603,9 @@ github_integration.send = function(path, success, error) {
       }
       alert(_t('__github_integration_connection_error', errorThrown));
     }
-  });
+  };
+  if (data) { aj.data = data; }
+  jQuery.ajax(aj);
 };
 
 builder.gui.addStartupEntry(_t('__github_integration_browse'), 'startup-browse-github', function() { github_integration.gitpanel.show(); });
