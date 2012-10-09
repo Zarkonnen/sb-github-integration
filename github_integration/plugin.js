@@ -235,6 +235,9 @@ github_integration.gitpanel.load = function(reload) {
           'path': username + '/' + data[i].full_name
         });
       }
+      l.sort(function(a, b) {
+        return a.name < b.name ? -1 : b.name > a.name ? 1 : 0;
+      });
       github_integration.gitpanel.populateList();
       jQuery('#repo-list-loading').hide();
       jQuery('#repo-list-settings').show();
@@ -309,6 +312,9 @@ github_integration.gitpanel.reloadRepoEntry = function(e) {
           'sha': data[i].commit.sha
         });
       }
+      l.sort(function(a, b) {
+        return a.name < b.name ? -1 : b.name > a.name ? 1 : 0;
+      });
       github_integration.gitpanel.populateRepoEntry(e);
     },
     /*error*/ function(data) {
@@ -385,6 +391,9 @@ github_integration.gitpanel.reloadTreeEntry = function(e, parent, tree) {
         };
         tree.children.push(c);
       }
+      tree.children.sort(function(a, b) {
+        return a.name < b.name ? -1 : b.name > a.name ? 1 : 0;
+      });
       github_integration.gitpanel.populateTreeEntry(e, parent, tree);
     },
     /*error*/ function(data) {
