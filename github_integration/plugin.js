@@ -19,6 +19,7 @@ m.__github_integration_save = "Save";
 m.__github_integration_enter_name = "Please enter a name for the script to save under.";
 m.__github_integration_pwd_prompt = "Please enter the GitHub password for user {0}.";
 m.__github_integration_saving = "Saving...";
+m.__github_integration_save_error = "Unable to save. ({0})\nIt is possible that another commit interfered with the saving process.\nPlease try again.";
 
 // de
 m = builder.translate.locales['de'].mapping;
@@ -37,6 +38,7 @@ m.__github_integration_save = "Speichern";
 m.__github_integration_enter_name = "Bitte geben Sie einen Namen für das Skript an.";
 m.__github_integration_pwd_prompt = "GitHub-Passwort für den Benutzer \"{0}\"";
 m.__github_integration_saving = "Skript wird gespeichert...";
+m.__github_integration_save_error = "Das Skript konnte nicht gespeichert werden. ({0})\nMöglicherweise interferierte ein anderes Commit.\nVersuchen Sie es erneut.";
 
 github_integration.shutdown = function() {
   
@@ -531,22 +533,26 @@ github_integration.saveFile = function(script, path, eToReload) {
   
   // Set up convenience functions for talking to GitHub.
   var error = function(jqXHR, textStatus, errorThrown) {
+    alert(_t('__github_integration_save_error', errorThrown));
     github_integration.gitpanel.mode = github_integration.SAVE;
     jQuery('#github-save-li-ui').show();
     jQuery('#github-save-li-saving').hide();
     jQuery('#repo-list-close').show();
+    if (eToReload) {
+      github_integration.gitpanel.reloadRepoEntry(eToReload);
+    }
   };
   
   var get = function(path, success) {
-    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, error, credentials);
+    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, null, credentials, "GET", null, error);
   };
   
   var post = function(path, data, success) {
-    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, error, credentials, "POST", JSON.stringify(data));
+    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, null, credentials, "POST", JSON.stringify(data), error);
   };
   
   var patch = function(path, data, success) {
-    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, error, credentials, "PATCH", JSON.stringify(data));
+    github_integration.send("repos/" + owner + "/" + repo + "/" + path, success, null, credentials, "PATCH", JSON.stringify(data), error);
   };
   
   // Get the current commit's tree, patch it with the new/updated file, create a commit, and make
@@ -601,7 +607,7 @@ github_integration.saveFile = function(script, path, eToReload) {
   });
 };
 
-github_integration.send = function(path, success, error, credentials, type, data) {
+github_integration.send = function(path, success, error, credentials, type, data, errorOverride) {
   credentials = credentials || github_integration.getCredentials();
   var aj = {
     "type": type || "GET",
@@ -609,10 +615,14 @@ github_integration.send = function(path, success, error, credentials, type, data
     "url": "https://api.github.com/" + path + ((!type || type == "GET") ? ("?" + Math.random()) : ""),
     "success": success,
     "error": function(jqXHR, textStatus, errorThrown) {
-      if (error) {
-        error(jqXHR, textStatus, errorThrown);
+      if (errorOverride) {
+        errorOverride(jqXHR, textStatus, errorThrown);
+      } else {
+        if (error) {
+          error(jqXHR, textStatus, errorThrown);
+        }
+        alert(_t('__github_integration_connection_error', errorThrown));
       }
-      alert(_t('__github_integration_connection_error', errorThrown));
     }
   };
   if (data) { aj.data = data; }
