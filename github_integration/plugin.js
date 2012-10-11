@@ -145,7 +145,7 @@ builder.registerPostLoadHook(function() {
   builder.gui.menu.addItem('file', _t('__github_integration_save_menu'), 'file-github_integration-save', function() {
     var script = builder.getScript();
     if (script.path && script.path.where == 'github') {
-      github_integration.saveFile(script, script.path.path);
+      github_integration.saveFile(script, script.path.path, null, /* suppressOverwriteWarning */ true);
     } else {
       github_integration.gitpanel.scriptToSave = builder.getScript();
       github_integration.gitpanel.show(github_integration.SAVE);
@@ -496,9 +496,7 @@ github_integration.gitpanel.makeBlobEntry = function(e, parent, blob) {
 
 github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
   if (github_integration.gitpanel.mode == github_integration.SAVE) {
-    if (confirm(_t('__github_integration_overwrite_q', blob.path))) {
-      github_integration.saveFile(github_integration.gitpanel.scriptToSave, blob.path, e);
-    }
+    github_integration.saveFile(github_integration.gitpanel.scriptToSave, blob.path, e);
   } else if (github_integration.gitpanel.mode == github_integration.OPEN || github_integration.gitpanel.mode == github_integration.ADD) {
     // Disassemble path.
     var pathBits = blob.path.split("/");
@@ -544,7 +542,7 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
 
 github_integration.savingFileDialog = null;
 
-github_integration.saveFile = function(script, path, eToReload) {
+github_integration.saveFile = function(script, path, eToReload, suppressOverwriteWarning) {
   if (github_integration.gitpanel.dialog != null) {
     // Switch to view-only mode to prevent user from doing stupid interleaving things.
     github_integration.gitpanel.mode = github_integration.VIEW;
@@ -617,52 +615,66 @@ github_integration.saveFile = function(script, path, eToReload) {
   get("branches/" + branch, function(data) {
     var commitSHA = data.commit.sha;
     var treeSHA = data.commit.commit.tree.sha;
-    var treeUpdate = {
-      "base_tree": treeSHA,
-      "tree": [
-        {
-          "path": inBranchPath,
-          "mode": "100644",
-          "type": "blob",
-          "content": txt
-        }
-      ]
-    };
-    post("git/trees", treeUpdate, function(data) {
-      var newTreeSHA = data.sha;
-      var commit = {
-        "message": "Committed " + name + ".",
-        "tree": newTreeSHA,
-        "parents": [ commitSHA ]
-      };
-      post("git/commits", commit, function(data) {
-        var newCommitSHA = data.sha;
-        var headUpdate = {
-          "sha": newCommitSHA
-        };
-        patch("git/refs/heads/" + branch, headUpdate, function(data) {
-          script.path = { 'where': 'github', 'path': path };
-          builder.suite.setCurrentScriptSaveRequired(false);
-          builder.gui.suite.update();
-          if (github_integration.gitpanel.dialog != null) {
+    get("git/trees/" + treeSHA + "?recursive=1", function(data) {
+      if (!suppressOverwriteWarning) {
+        for (var i = 0; i < data.tree.length; i++) {
+          if (data.tree[i].path == inBranchPath && !confirm(_t('__github_integration_overwrite_q', inBranchPath))) {
+            github_integration.gitpanel.mode = github_integration.SAVE;
+            jQuery('#github-save-li-ui').show();
             jQuery('#github-save-li-saving').hide();
-            // Reload the parent in view-only mode to show the newly saved item, then close.
-            if (eToReload) {
-              github_integration.gitpanel.reloadRepoEntry(eToReload);
-              jQuery('#repo-list-close').show();
-              github_integration.gitpanel.onReloadCallbackPath = path;
-              github_integration.gitpanel.onReloadCallback = function(id) {
-                jQuery('#repo-list-' + id + '-name').css('font-weight', 'bold').css('color', 'black')[0].scrollIntoView(true);
-                github_integration.gitpanel.onReloadCallbackPath = null;
-                setTimeout(github_integration.gitpanel.hide, 500);
-              };
-            } else {
-              github_integration.gitpanel.hide();
-            }
-          } else {
-            jQuery(github_integration.savingFileDialog).remove();
-            github_integration.savingFileDialog = null;
+            jQuery('#repo-list-close').show();
+            jQuery('#github-save-input').val(name).focus();
+            return;
           }
+        }
+      }
+      var treeUpdate = {
+        "base_tree": treeSHA,
+        "tree": [
+          {
+            "path": inBranchPath,
+            "mode": "100644",
+            "type": "blob",
+            "content": txt
+          }
+        ]
+      };
+      post("git/trees", treeUpdate, function(data) {
+        var newTreeSHA = data.sha;
+        var commit = {
+          "message": "Committed " + name + ".",
+          "tree": newTreeSHA,
+          "parents": [ commitSHA ]
+        };
+        post("git/commits", commit, function(data) {
+          var newCommitSHA = data.sha;
+          var headUpdate = {
+            "sha": newCommitSHA
+          };
+          patch("git/refs/heads/" + branch, headUpdate, function(data) {
+            script.path = { 'where': 'github', 'path': path };
+            builder.suite.setCurrentScriptSaveRequired(false);
+            builder.gui.suite.update();
+            if (github_integration.gitpanel.dialog != null) {
+              jQuery('#github-save-li-saving').hide();
+              // Reload the parent in view-only mode to show the newly saved item, then close.
+              if (eToReload) {
+                github_integration.gitpanel.reloadRepoEntry(eToReload);
+                jQuery('#repo-list-close').show();
+                github_integration.gitpanel.onReloadCallbackPath = path;
+                github_integration.gitpanel.onReloadCallback = function(id) {
+                  jQuery('#repo-list-' + id + '-name').css('font-weight', 'bold').css('color', 'black')[0].scrollIntoView(true);
+                  github_integration.gitpanel.onReloadCallbackPath = null;
+                  setTimeout(github_integration.gitpanel.hide, 500);
+                };
+              } else {
+                github_integration.gitpanel.hide();
+              }
+            } else {
+              jQuery(github_integration.savingFileDialog).remove();
+              github_integration.savingFileDialog = null;
+            }
+          });
         });
       });
     });
