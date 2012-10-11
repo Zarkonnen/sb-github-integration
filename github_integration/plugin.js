@@ -256,7 +256,7 @@ github_integration.gitpanel.load = function(reload) {
         });
       }
       l.sort(function(a, b) {
-        return a.name < b.name ? -1 : b.name > a.name ? 1 : 0;
+        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
       });
       github_integration.gitpanel.populateList();
       jQuery('#repo-list-loading').hide();
@@ -333,7 +333,7 @@ github_integration.gitpanel.reloadRepoEntry = function(e) {
         });
       }
       l.sort(function(a, b) {
-        return a.name < b.name ? -1 : b.name > a.name ? 1 : 0;
+        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
       });
       github_integration.gitpanel.populateRepoEntry(e);
     },
@@ -412,7 +412,7 @@ github_integration.gitpanel.reloadTreeEntry = function(e, parent, tree) {
         tree.children.push(c);
       }
       tree.children.sort(function(a, b) {
-        return a.name < b.name ? -1 : b.name > a.name ? 1 : 0;
+        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
       });
       github_integration.gitpanel.populateTreeEntry(e, parent, tree);
     },
