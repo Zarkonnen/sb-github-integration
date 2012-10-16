@@ -1,1 +1,78 @@
-Hello world!
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Github Integration for Selenium Builder</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <link href="css/bootstrap.css" rel="stylesheet">
+    <style type="text/css">
+      body {
+        padding-top: 60px;
+        padding-bottom: 40px;
+      }
+    </style>
+    <link href="css/bootstrap-responsive.css" rel="stylesheet">
+
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="brand" href="#">Github Integration for Selenium Builder</a>
+          <div class="nav-collapse collapse" style="float: right;">
+            <ul class="nav">
+              <li><a href="https://github.com/Zarkonnen/sb-github-integration">Code</a></li>
+              <li><a href="https://github.com/Zarkonnen/sb-github-integration/issues">Issue Tracker</a></li>
+              <li><a href="mailto:david.stark@zarkonnen.com">Suggestions?</a></li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+      <div class="hero-unit" style="height: 400px;">
+        <div id="myCarousel" class="carousel slide" style="float: right; margin-left: 30px;">
+          <!-- Carousel items -->
+          <div class="carousel-inner">
+            <div class="active item"><img src="logo.png" class="img-rounded" /></div>
+            <div class="item"><img src="ex1.png" class="img-rounded" /></div>
+            <div class="item"><img src="ex2.png" class="img-rounded" /></div>
+          </div>
+          <!-- Carousel nav -->
+          <a class="carousel-control left" href="#myCarousel" data-slide="prev">&lsaquo;</a>
+          <a class="carousel-control right" href="#myCarousel" data-slide="next">&rsaquo;</a>
+        </div>
+        
+        <h1>Github&nbsp;Integration for&nbsp;Selenium&nbsp;Builder</h1>
+        <br/>
+        <p>A plugin for <a href="http://www.sebuilder.com">Selenium Builder</a> that lets you store your Selenium scripts on GitHub. You can browse, edit, and re-commit test scripts.</p>
+        <p>You can install GitHub Integration directly from Selenium Builder by selecting "Manage Plugins" in the startup options.</p>
+        <img src="manageplugins.png" />
+      </div>
+      
+      <footer>
+        <p>GitHub Integration for Selenium Builder was written by <a href="mailto:david.stark@zarkonnen.com">David Stark</a> at the behest of <a href="http://www.saucelabs.com">Sauce Labs</a>. It is licensed under the Apache 2 licence. It is not associated with GitHub in any way.</p>
+      </footer>
+
+    </div>
+
+    <script src="js/jquery.js"></script>
+    <script src="js/bootstrap.js"></script>
+    <script type="text/javascript">
+      $('.carousel').carousel({
+        interval: 7000
+      });
+    </script>
+
+  </body>
+</html>

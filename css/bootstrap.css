@@ -5670,8 +5670,8 @@ a.badge:hover {
 
 .carousel-control {
   position: absolute;
-  top: 40%;
-  left: 15px;
+  bottom: 5px;
+  left: 5px;
   width: 40px;
   height: 40px;
   margin-top: -20px;
@@ -5687,11 +5687,16 @@ a.badge:hover {
           border-radius: 23px;
   opacity: 0.5;
   filter: alpha(opacity=50);
+	display: none;
 }
 
 .carousel-control.right {
-  right: 15px;
+  right: 5px;
   left: auto;
+}
+
+.carousel:hover .carousel-control {
+	display: block;
 }
 
 .carousel-control:hover {
