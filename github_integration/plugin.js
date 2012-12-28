@@ -115,7 +115,7 @@ github_integration.settingspanel.show = function(callback, cancelCallback) {
         ),
         newNode('tr',
           newNode('td', _t('__github_integration_password') + " "),
-          newNode('td', newNode('input', {id: 'github_integration-password', type: 'text', value: credentials.password}))
+          newNode('td', newNode('input', {id: 'github_integration-password', type: 'password', value: credentials.password}))
         )
       ),
       newNode('a', {'href': '#', 'class': 'button', 'id': 'github_integration-ok', 'click': function() {
