@@ -23,6 +23,10 @@ m.__github_integration_saving = "Saving...";
 m.__github_integration_save_error = "Unable to save. ({0})\nIt is possible that another commit interfered with the saving process.\nPlease try again.";
 m.__github_integration_overwrite_q = "Are you sure you want to overwrite the file {0}?";
 m.__github_integration_file_gone = "The file {0} no longer exists.";
+m.__github_integration_save_suite_menu = "Save to GitHub";
+m.__github_integration_save_suite_as_menu = "Save to GitHub as...";
+m.__github_integration_invalid_path = "{0} is not a valid GitHub integration path.";
+m.__github_integration_unable_to_load = "The file could not be loaded from GitHub: {0}";
 
 // de
 m = builder.translate.locales['de'].mapping;
@@ -45,9 +49,110 @@ m.__github_integration_saving = "Skript wird gespeichert...";
 m.__github_integration_save_error = "Das Skript konnte nicht gespeichert werden. ({0})\nMöglicherweise interferierte ein anderes Commit.\nVersuchen Sie es erneut.";
 m.__github_integration_overwrite_q = "Das Dokument {0} überschreiben?";
 m.__github_integration_file_gone = "Das Dokument {0} existiert nicht mehr.";
+m.__github_integration_save_suite_menu = "Auf GitHub speichern";
+m.__github_integration_save_suite_as_menu = "Auf GitHub speichern als...";
+m.__github_integration_invalid_path = "Der Pfad {0} ist ungültig.";
+m.__github_integration_unable_to_load = "Das Dokument konnte nicht geladen werden: {0}";
 
 github_integration.shutdown = function() {
   
+};
+
+builder.io.addStorageSystem({
+  "where": "github",
+  "load": function(filePath, basePath, callback) {
+    if (basePath) {
+      var baseParentPath = basePath.path.split("/");
+      baseParentPath.pop();
+      baseParentPath = baseParentPath.join("/") + "/";
+      github_integration.tryLoading(baseParentPath + filePath.path,
+        function(text) {
+          callback({'text': text, 'path': { 'path': baseParentPath + filePath.path, 'where': 'github' }});
+        },
+        function() {
+          github_integration.tryLoading(filePath.path,
+            function(text) {
+              callback({'text': text, 'path': { 'path': filePath.path, 'where': 'github' }});
+            },
+            function(error) {
+              callback(null, _t('__github_integration_unable_to_load', error));
+            }
+          );
+        }
+      );
+    } else {
+      github_integration.tryLoading(filePath.path,
+        function(text) {
+          callback({'text': text, 'path': { 'path': filePath.path, 'where': 'github' }});
+        },
+        function(error) {
+          callback(null, _t('__github_integration_unable_to_load', error));
+        }
+      );
+    }
+  },
+  "deriveRelativePath": function(path, basePath) {
+    var baseParentPath = basePath.path.split("/");
+    baseParentPath.pop();
+    baseParentPath = baseParentPath.join("/") + "/";
+    if (path.path.startsWith(baseParentPath)) {
+      return { 'path': path.path.substring(baseParentPath.length), 'where': 'github' };
+    } else {
+      return path;
+    }
+  }
+});
+
+github_integration.tryLoading = function(path, success, failure) {
+  success = success || function() {};
+  failure = failure || function() {};
+  // Disassemble path.
+  var pathBits = path.split("/");
+  if (pathBits.length < 5) {
+    failure(_t('__github_integration_invalid_path', path));
+    return;
+  }
+  var username = pathBits[0];
+  var owner = pathBits[1];
+  var repo = pathBits[2];
+  var branch = pathBits[3];
+  var name = pathBits[pathBits.length - 1];
+  var inBranchPath = [];
+  for (var i = 4; i < pathBits.length; i++) {
+    inBranchPath.push(pathBits[i]);
+  }
+  inBranchPath = inBranchPath.join("/");
+  
+  var get = function(path, success) {
+    github_integration.send(path, success, null, null, null, null, function(jqXHR, textStatus, errorThrown) {
+      failure(errorThrown);
+    });
+  };
+  
+  get("repos/" + owner + "/" + repo + "/branches/" + branch, function(data) {
+    var treeSHA = data.commit.commit.tree.sha;
+    get("repos/" + owner + "/" + repo + "/git/trees/" + treeSHA + "?recursive=1", function(data) {
+      var blobSHA = 0;
+      for (var i = 0; i < data.tree.length; i++) {
+        if (data.tree[i].path == inBranchPath) {
+          blobSHA = data.tree[i].sha;
+          break;
+        }
+      }
+      if (!blobSHA) {
+        failure(_t('__github_integration_file_gone', inBranchPath));
+        return;
+      }
+      get("repos/" + owner + "/" + repo + "/git/blobs/" + blobSHA, function(data) {
+        if (data.encoding == 'utf-8') {
+          data = data.content;
+        } else {
+          data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
+        }
+        success(data);
+      });
+    });
+  });
 };
 
 github_integration.loginManager = Components.classes["@mozilla.org/login-manager;1"].getService(Components.interfaces.nsILoginManager);
@@ -167,7 +272,48 @@ builder.registerPostLoadHook(function() {
   
   builder.gui.menu.addItem('suite', _t('__github_integration_add_from_github'), 'suite-github_integration_add_from_github', function() {
     github_integration.gitpanel.show(github_integration.ADD);
-  });  
+  });
+  
+  builder.gui.menu.addItem('suite', _t('__github_integration_save_suite_menu'), 'file-github_integration-save-suite', function() {
+    if (!builder.gui.suite.canExport()) { alert(_t('suite_cannot_save_unsaved_scripts')); return; }
+    var version = null;
+    for (var i = 0; i < builder.seleniumVersions.length; i++) {
+      if (builder.suite.areAllScriptsOfVersion(builder.seleniumVersions[i])) {
+        version = builder.seleniumVersions[i];
+      }
+    }
+    if (!version) { alert(_t('cannot_save_suite_due_to_mixed_versions')); return; }
+    if (builder.suite.path && builder.suite.path.where == 'github') {
+      github_integration.saveSuite(builder.suite.scripts, builder.suite.path.path, null, /* suppressOverwriteWarning */ true, builder.suite.path.format, version);
+    } else {
+      if (builder.suite.path && builder.suite.path.format) {
+        if (version == builder.selenium1) {
+          github_integration.gitpanel.sel1SelectedSaveSuiteFormat = builder.suite.path.format;
+        } else {
+          github_integration.gitpanel.sel2SelectedSaveSuiteFormat = builder.suite.path.format;
+        }
+      }
+      github_integration.gitpanel.suiteSeleniumVersion = version;
+      github_integration.gitpanel.suiteToSave = builder.suite.scripts;
+      github_integration.gitpanel.suitePath = builder.suite.path;
+      github_integration.gitpanel.show(github_integration.SAVE_SUITE);
+    }
+  });
+  
+  builder.gui.menu.addItem('suite', _t('__github_integration_save_suite_as_menu'), 'file-github_integration-save-suite-as', function() {
+    if (!builder.gui.suite.canExport()) { return; }
+    var version = null;
+    for (var i = 0; i < builder.seleniumVersions.length; i++) {
+      if (builder.suite.areAllScriptsOfVersion(builder.seleniumVersions[i])) {
+        version = builder.seleniumVersions[i];
+      }
+    }
+    if (!version) { return; }
+    github_integration.gitpanel.suiteSeleniumVersion = version;
+    github_integration.gitpanel.suiteToSave = builder.suite.scripts;
+    github_integration.gitpanel.suitePath = builder.suite.path;
+    github_integration.gitpanel.show(github_integration.SAVE_SUITE);
+  });
 });
 
 github_integration.UNLOADED  = 0;
@@ -182,7 +328,8 @@ github_integration.openPaths = {};
 github_integration.OPEN = 0;
 github_integration.ADD = 1;
 github_integration.SAVE = 2;
-github_integration.VIEW = 3;
+github_integration.SAVE_SUITE = 3;
+github_integration.VIEW = 4;
 
 github_integration.gitpanel = {};
 github_integration.gitpanel.dialog = null;
@@ -193,6 +340,11 @@ github_integration.gitpanel.onReloadCallbackPath = null;
 github_integration.gitpanel.availableSaveFormats = [];
 github_integration.gitpanel.sel1SelectedSaveFormat = null;
 github_integration.gitpanel.sel2SelectedSaveFormat = null;
+github_integration.gitpanel.suiteToSave = null;
+github_integration.gitpanel.suitePath = null
+github_integration.gitpanel.suiteSeleniumVersion = null;
+github_integration.gitpanel.sel1SelectedSaveSuiteFormat = null;
+github_integration.gitpanel.sel2SelectedSaveSuiteFormat = null;
 
 github_integration.gitpanel.show = function(mode) {
   mode = mode || github_integration.OPEN;
@@ -453,6 +605,24 @@ github_integration.gitpanel.storeAndGetChosenFormat = function() {
   return format;
 };
 
+github_integration.gitpanel.storeAndGetChosenSuiteFormat = function() {
+  var format = null;
+  if (jQuery('#github-save-suite-li-format-chooser-2').length > 0) {
+    format = github_integration.gitpanel.availableSaveSuiteFormats[jQuery('#github-save-li-format-chooser-2').val()];
+  }
+  if (!format && jQuery('#github-save-suite-li-format-chooser').length > 0) {
+    format = github_integration.gitpanel.availableSaveSuiteFormats[jQuery('#github-save-li-format-chooser').val()];
+  }
+  if (format) {
+    if (github_integration.gitpanel.suiteSeleniumVersion == builder.selenium1) {
+      github_integration.gitpanel.sel1SelectedSaveSuiteFormat = format;
+    } else {
+      github_integration.gitpanel.sel2SelectedSaveSuiteFormat = format;
+    }
+  }
+  return format;
+};
+
 github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
   jQuery('#repo-list-' + tree.id + '-reload').show();
   jQuery('#repo-list-' + tree.id + '-triangle')[0].src = builder.plugins.getResourcePath('github_integration', 'open.png');
@@ -513,6 +683,60 @@ github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
     jQuery('#github-save-input')[0].selectionEnd = selEnd;
   }
   
+  if (github_integration.gitpanel.mode == github_integration.SAVE_SUITE) {
+    var txt = jQuery('#github-save-suite-input').val();
+    var sel = jQuery('#github-save-suite-input')[0] ? jQuery('#github-save-suite-input')[0].selectionStart : 0;
+    var selEnd = jQuery('#github-save-suite-input')[0] ? jQuery('#github-save-suite-input')[0].selectionEnd : 0;
+    // Store which format was chosen in the last format chooser, if there is one.
+    github_integration.gitpanel.storeAndGetChosenSuiteFormat();
+    if (!txt) {
+      if (github_integration.gitpanel.suiteSeleniumVersion == builder.selenium1) {
+        if (github_integration.gitpanel.sel1SelectedSaveSuiteFormat) {
+          txt = github_integration.gitpanel.sel1SelectedSaveSuiteFormat.extension;
+        } else {
+          txt = ".html";
+        }
+      } else {
+        if (github_integration.gitpanel.sel2SelectedSaveSuiteFormat) {
+          txt = github_integration.gitpanel.sel2SelectedSaveSuiteFormat.extension;
+        } else {
+          txt = ".json";
+        }
+      }
+    }
+    jQuery('#github-save-suite-li').remove();
+    jQuery('#github-save-suite-li-format-div-2').remove();
+    jQuery('#repo-list-' + tree.id + '-ul').append(newNode('li', { 'id': 'github-save-suite-li', 'style': "padding-left: 12px;" },
+      newNode('span', {'id': 'github-save-suite-li-ui'},
+        newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'file.png'), 'id': 'repo-list-saving-suite', 'style': "vertical-align: middle;"}),
+        newNode('input', { 'id': 'github-save-suite-input', 'type': 'text', 'value': txt || "", 'keypress': function (evt) {
+          if (evt.which == 13) { // Hit enter to save.
+            github_integration.gitpanel.doSaveSuite(e, parent, tree);
+          }
+        }}),
+        newNode('a', { 'href': '#', 'class': 'button', 'style': "margin-left: 5px;", 'click': function() { github_integration.gitpanel.doSaveSuite(e, parent, tree); } },
+          _t('__github_integration_save')
+        ),
+        newNode('div', {'id': 'github-save-suite-li-format-div', 'style': "margin-left: 16px;"},
+          newNode('select', {
+            'id': 'github-save-suite-li-format-chooser',
+            'change': github_integration.gitpanel.updateSuiteExtension
+          })
+        )
+      ),
+      newNode('span', {'id': 'github-save-suite-li-saving', 'style': "display: none;"},
+        newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'spinner.gif'), 'id': 'repo-list-saving-suite-spinner', 'style': "vertical-align: middle;"}),
+        _t('__github_integration_saving')
+      )
+    ));
+    
+    github_integration.gitpanel.populateSuiteFormatChooser('github-save-suite-li-format-chooser');
+    
+    jQuery('#github-save-suite-input').focus();
+    jQuery('#github-save-suite-input')[0].selectionStart = sel;
+    jQuery('#github-save-suite-input')[0].selectionEnd = selEnd;
+  }
+  
   for (var i = 0; i < tree.children.length; i++) {
     if (tree.children[i].type == 'tree') {
       jQuery('#repo-list-' + tree.id + '-ul').append(github_integration.gitpanel.makeTreeEntry(e, tree, tree.children[i]));
@@ -553,6 +777,21 @@ github_integration.gitpanel.doSave = function(e, parent, tree) {
   }
 };
 
+github_integration.gitpanel.doSaveSuite = function(e, parent, tree) {
+  var txt = jQuery('#github-save-suite-input').val();
+  if (!txt) {
+    alert(_t('__github_integration_enter_name'));
+  } else {
+    var format = github_integration.gitpanel.availableSaveSuiteFormats[jQuery('#github-save-suite-li-format-chooser').val()];
+    if (github_integration.gitpanel.suiteSeleniumVersion == builder.selenium1) {
+      github_integration.gitpanel.sel1SelectedSaveSuiteFormat = format;
+    } else {
+      github_integration.gitpanel.sel2SelectedSaveSuiteFormat = format;
+    }
+    github_integration.saveSuite(github_integration.gitpanel.suiteToSave, tree.path + '/' + txt, e, /*suppressOverwriteWarning*/ false, format, github_integration.gitpanel.suiteSeleniumVersion);
+  }
+};
+
 github_integration.gitpanel.updateExtension = function() {
   // Update the extension automatically.
   var txt = jQuery('#github-save-input').val();
@@ -568,6 +807,24 @@ github_integration.gitpanel.updateExtension = function() {
   if (oldFormat && oldFormat.name != format.name && txt.endsWith(oldFormat.extension)) {
     txt = txt.substring(0, txt.length - oldFormat.extension.length) + format.extension;
     jQuery('#github-save-input').val(txt);
+  }
+};
+
+github_integration.gitpanel.updateSuiteExtension = function() {
+  // Update the extension automatically.
+  var txt = jQuery('#github-save-suite-input').val();
+  var oldFormat = null;
+  var format = github_integration.gitpanel.availableSaveSuiteFormats[jQuery('#github-save-suite-li-format-chooser').val()];
+  if (github_integration.gitpanel.suiteSeleniumVersion == builder.selenium1) {
+    oldFormat = github_integration.gitpanel.sel1SelectedSaveSuiteFormat || github_integration.gitpanel.availableSaveSuiteFormats[0];
+    github_integration.gitpanel.sel1SelectedSaveSuiteFormat = format;
+  } else {
+    oldFormat = github_integration.gitpanel.sel2SelectedSaveSuiteFormat || github_integration.gitpanel.availableSaveSuiteFormats[0];
+    github_integration.gitpanel.sel2SelectedSaveSuiteFormat = format;
+  }
+  if (oldFormat && oldFormat.name != format.name && txt.endsWith(oldFormat.extension)) {
+    txt = txt.substring(0, txt.length - oldFormat.extension.length) + format.extension;
+    jQuery('#github-save-suite-input').val(txt);
   }
 };
 
@@ -590,6 +847,43 @@ github_integration.gitpanel.populateFormatChooser = function(formatChooserID) {
   }
 };
 
+github_integration.gitpanel.populateSuiteFormatChooser = function(formatChooserID) {
+  var defaultFormat = null;
+  if (github_integration.gitpanel.suiteSeleniumVersion == builder.selenium1) {
+    var avfs = builder.selenium1.adapter.availableFormats();
+    var fs = [];
+    fs.push({
+      'name': 'HTML (Default)',
+      'extension': '.html',
+      'getFormatter': function() {
+        return {
+          'formatSuite': function(testSuite) {
+            return testSuite.formatSuiteTable();
+          }
+        };
+      }
+    });
+    for (var i = 0; i < avfs.length; i++) {
+      if (avfs[i].getFormatter && avfs[i].getFormatter().formatSuite) {
+        fs.push(avfs[i]);
+      }
+    }
+    github_integration.gitpanel.availableSaveSuiteFormats = fs;
+    defaultFormat = github_integration.gitpanel.sel1SelectedSaveSuiteFormat;
+  }
+  if (github_integration.gitpanel.suiteSeleniumVersion == builder.selenium2) {
+    github_integration.gitpanel.availableSaveSuiteFormats = builder.selenium2.io.suiteFormats;
+    defaultFormat = github_integration.gitpanel.sel2SelectedSaveSuiteFormat;
+  }
+  for (var i = 0; i < github_integration.gitpanel.availableSaveSuiteFormats.length; i++) {
+    if (defaultFormat && github_integration.gitpanel.availableSaveSuiteFormats[i].name == defaultFormat.name) {
+      jQuery('#' + formatChooserID).append(newNode('option', github_integration.gitpanel.availableSaveSuiteFormats[i].name, {'value': i, 'selected': 'selected'}));
+    } else {
+      jQuery('#' + formatChooserID).append(newNode('option', github_integration.gitpanel.availableSaveSuiteFormats[i].name, {'value': i}));
+    }
+  }
+};
+
 github_integration.gitpanel.makeBlobEntry = function(e, parent, blob) {
   return newNode('li', {'style': "padding-left: 12px;"},
     newNode('a', {'href': '#', 'id': 'repo-list-' + blob.id + '-a', 'click': function() {github_integration.gitpanel.openBlobEntry(e, parent, blob);}},
@@ -601,7 +895,6 @@ github_integration.gitpanel.makeBlobEntry = function(e, parent, blob) {
 
 github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
   if (github_integration.gitpanel.mode == github_integration.SAVE) {
-    //github_integration.saveFile(github_integration.gitpanel.scriptToSave, blob.path, e);
     jQuery('#github-save-li').hide();
     jQuery('#github-save-li-format-div-2').remove();
     jQuery('#repo-list-' + blob.id + '-a').after(newNode('div', {'id': 'github-save-li-format-div-2', 'style': "margin-left: 16px;"},
@@ -625,6 +918,33 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
     for (var i = 0; i < github_integration.gitpanel.availableSaveFormats.length; i++) {
       if (blob.name.endsWith(github_integration.gitpanel.availableSaveFormats[i].extension)) {
         jQuery('#github-save-li-format-chooser-2').val(i);
+        break;
+      }
+    }
+  } else if (github_integration.gitpanel.mode == github_integration.SAVE_SUITE) {
+    jQuery('#github-save-suite-li').hide();
+    jQuery('#github-save-suite-li-format-div-2').remove();
+    jQuery('#repo-list-' + blob.id + '-a').after(newNode('div', {'id': 'github-save-suite-li-format-div-2', 'style': "margin-left: 16px;"},
+      newNode('select', {
+        'id': 'github-save-suite-li-format-chooser-2'
+      }),
+      newNode('br'),
+      newNode('a', {'href': '#', 'class': 'button', 'id': 'github_integration-ok', 'click': function() {
+        // Store which format was chosen in the last format chooser, if there is one.
+        var format = github_integration.gitpanel.storeAndGetChosenSuiteFormat();
+        jQuery('#github-save-suite-li-format-div-2').hide();
+        github_integration.saveSuite(github_integration.gitpanel.suiteToSave, blob.path, e, /*suppressOverwriteWarning*/ true, format, github_integration.gitpanel.suiteSeleniumVersion);
+      }}, _t('ok')),
+      newNode('a', {'href': '#', 'class': 'button', 'id': 'github_integration-cancel', 'click': function() {
+        jQuery('#github-save-suite-li').show();
+        jQuery('#github-save-suite-li-format-div-2').remove();
+      }}, _t('cancel'))
+    ));
+    github_integration.gitpanel.populateSuiteFormatChooser('github-save-li-format-chooser-2');
+    // Set format to what the suffix suggests by default, if anything.
+    for (var i = 0; i < github_integration.gitpanel.availableSaveSuiteFormats.length; i++) {
+      if (blob.name.endsWith(github_integration.gitpanel.availableSaveSuiteFormats[i].extension)) {
+        jQuery('#github-save-suite-li-format-chooser-2').val(i);
         break;
       }
     }
@@ -662,9 +982,9 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
           } else {
             data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
           }
-          if (builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path }, null, github_integration.gitpanel.mode == github_integration.ADD)) {
+          builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path }, github_integration.gitpanel.mode == github_integration.ADD, function(success) {
             github_integration.gitpanel.hide();
-          }
+          });
         });
       });
     });
@@ -672,6 +992,7 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
 };
 
 github_integration.savingFileDialog = null;
+github_integration.savingSuiteDialog = null;
 
 github_integration.createScriptRepresentation = function(script, name, format, callback) {
   if (script.seleniumVersion == builder.selenium1) {
@@ -686,6 +1007,31 @@ github_integration.createScriptRepresentation = function(script, name, format, c
     } else {
       callback(format.format(script, name, {}));
     }
+  }
+};
+
+github_integration.createSuiteRepresentation = function(scripts, path, format, suiteSeleniumVersion, callback) {
+  path = { 'path': path, 'where': 'github' };
+  if (suiteSeleniumVersion == builder.selenium1) {
+    var ts = new TestSuite();
+    for (var i = 0; i < scripts.length; i++) {
+      var script = scripts[i];
+      var tc = builder.selenium1.adapter.convertScriptToTestCase(script);
+      var testPath = builder.io.deriveRelativePath(script.path, path).path;
+      tc.title = testPath.split(".")[0];
+      ts.addTestCaseFromContent(tc);
+      ts.tests[ts.tests.length - 1].filename = testPath;
+    }
+    if (format.name == "HTML") {
+      callback(ts.formatSuiteTable());
+    } else {
+      var pathName = path.path.split("/");
+      pathName = pathName[pathName.length - 1];
+      callback(format.getFormatter().formatSuite(ts, pathName));
+    }
+  }
+  if (suiteSeleniumVersion == builder.selenium2) {
+      callback(format.format(scripts, path));
   }
 };
 
@@ -708,14 +1054,30 @@ github_integration.saveFile = function(script, path, eToReload, suppressOverwrit
   var name = pathBits[pathBits.length - 1];
   
   github_integration.createScriptRepresentation(script, name, format, function(text) {
-    github_integration.saveText(script, path, eToReload, suppressOverwriteWarning, format, text);
+    github_integration.saveText(script, path, eToReload, suppressOverwriteWarning, format, text, github_integration.SAVE);
   });
 }
 
-github_integration.saveText = function(script, path, eToReload, suppressOverwriteWarning, format, txt) {
-  // Generate the content to actually upload.
-  //var txt = script.seleniumVersion.io.getScriptDefaultRepresentation(script, name);
+github_integration.saveSuite = function(scripts, path, eToReload, suppressOverwriteWarning, format, seleniumVersion) {
+  if (github_integration.gitpanel.dialog != null) {
+    // Switch to view-only mode to prevent user from doing stupid interleaving things.
+    github_integration.gitpanel.mode = github_integration.VIEW;
+    jQuery('#github-save-suite-li-ui').hide();
+    jQuery('#github-save-suite-li-saving').show();
+    jQuery('#repo-list-close').hide();
+  } else {
+    github_integration.savingSuiteDialog = newNode('div', {'class': 'dialog'},
+      newNode('span', {'id': 'github-saving-suite' }, _t('__github_integration_saving'), newNode('img', {'src': builder.plugins.getResourcePath('github_integration', 'spinner.gif'), 'style': "vertical-align: middle;"}))
+    );
+    builder.dialogs.show(github_integration.savingSuiteDialog);
+  }
   
+  github_integration.createSuiteRepresentation(scripts, path, format, seleniumVersion, function(text) {
+    github_integration.saveText(scripts, path, eToReload, suppressOverwriteWarning, format, text, github_integration.SAVE_SUITE);
+  });
+}
+
+github_integration.saveText = function(scriptOrScripts, path, eToReload, suppressOverwriteWarning, format, txt, saveMode) {
   // Disassemble path.
   var pathBits = path.split("/");
   var username = pathBits[0];
@@ -742,16 +1104,26 @@ github_integration.saveText = function(script, path, eToReload, suppressOverwrit
   var error = function(jqXHR, textStatus, errorThrown) {
     alert(_t('__github_integration_save_error', errorThrown));
     if (github_integration.gitpanel.dialog != null) {
-      github_integration.gitpanel.mode = github_integration.SAVE;
-      jQuery('#github-save-li-ui').show();
-      jQuery('#github-save-li-saving').hide();
+      github_integration.gitpanel.mode = saveMode;
+      if (saveMode == github_integration.SAVE) {
+        jQuery('#github-save-li-ui').show();
+        jQuery('#github-save-li-saving').hide();
+      } else {
+        jQuery('#github-save-suite-li-ui').show();
+        jQuery('#github-save-suite-li-saving').hide();
+      }
       jQuery('#repo-list-close').show();
       if (eToReload) {
         github_integration.gitpanel.reloadRepoEntry(eToReload);
       }
     } else {
-      jQuery(github_integration.savingFileDialog).remove();
-      github_integration.savingFileDialog = null;
+      if (saveMode == github_integration.SAVE) {
+        jQuery(github_integration.savingFileDialog).remove();
+        github_integration.savingFileDialog = null;
+      } else {
+        jQuery(github_integration.savingSuiteDialog).remove();
+        github_integration.savingSuiteDialog = null;
+      }
     }
   };
   
@@ -776,7 +1148,7 @@ github_integration.saveText = function(script, path, eToReload, suppressOverwrit
       if (!suppressOverwriteWarning) {
         for (var i = 0; i < data.tree.length; i++) {
           if (data.tree[i].path == inBranchPath && !confirm(_t('__github_integration_overwrite_q', inBranchPath))) {
-            github_integration.gitpanel.mode = github_integration.SAVE;
+            github_integration.gitpanel.mode = saveMode;
             jQuery('#github-save-li-ui').show();
             jQuery('#github-save-li-saving').hide();
             jQuery('#repo-list-close').show();
@@ -809,11 +1181,18 @@ github_integration.saveText = function(script, path, eToReload, suppressOverwrit
             "sha": newCommitSHA
           };
           patch("git/refs/heads/" + branch, headUpdate, function(data) {
-            script.path = { 'where': 'github', 'path': path, 'format': format };
-            builder.suite.setCurrentScriptSaveRequired(false);
-            builder.gui.suite.update();
-            if (github_integration.gitpanel.dialog != null) {
+            if (saveMode == github_integration.SAVE) {
+              scriptOrScripts.path = { 'where': 'github', 'path': path, 'format': format };
+              builder.suite.setCurrentScriptSaveRequired(false);
+              builder.gui.suite.update();
               jQuery('#github-save-li-saving').hide();
+            } else {
+              builder.suite.path = { 'where': 'github', 'path': path, 'format': format };
+              builder.suite.setSuiteSaveRequired(false);
+              builder.gui.suite.update();
+              jQuery('#github-save-suite-li-saving').hide();
+            }
+            if (github_integration.gitpanel.dialog != null) {              
               // Reload the parent in view-only mode to show the newly saved item, then close.
               if (eToReload) {
                 github_integration.gitpanel.reloadRepoEntry(eToReload);
@@ -828,8 +1207,13 @@ github_integration.saveText = function(script, path, eToReload, suppressOverwrit
                 github_integration.gitpanel.hide();
               }
             } else {
-              jQuery(github_integration.savingFileDialog).remove();
-              github_integration.savingFileDialog = null;
+              if (saveMode == github_integration.SAVE) {
+                jQuery(github_integration.savingFileDialog).remove();
+                github_integration.savingFileDialog = null;
+              } else {
+                jQuery(github_integration.savingSuiteDialog).remove();
+                github_integration.savingSuiteDialog = null;
+              }
             }
           });
         });
