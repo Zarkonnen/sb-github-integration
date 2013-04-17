@@ -37,7 +37,7 @@ m.__github_integration_settings = "GitHub Integration Einstellungen";
 m.__github_integration_username = "Benutzername";
 m.__github_integration_password = "Passwort";
 m.__github_integration_connection_error = "Verbindung zu GitHub fehlgeschlagen: {0}";
-m.__github_integration_browse = "Skript von GitHub";
+m.__github_integration_browse = "Skript/Suite von GitHub";
 m.__github_integration_repos = "Repositorys von {0}";
 m.__github_integration_loading = "Lade...";
 m.__github_integration_edit_settings = "Einstellungen";
@@ -50,8 +50,8 @@ m.__github_integration_save = "Speichern";
 m.__github_integration_export = "Exportieren";
 m.__github_integration_enter_name = "Bitte geben Sie einen Namen für das Skript an.";
 m.__github_integration_pwd_prompt = "GitHub-Passwort für den Benutzer \"{0}\"";
-m.__github_integration_saving = "Skript wird gespeichert...";
-m.__github_integration_save_error = "Das Skript konnte nicht gespeichert werden. ({0})\nMöglicherweise interferierte ein anderes Commit.\nVersuchen Sie es erneut.";
+m.__github_integration_saving = "Wird gespeichert...";
+m.__github_integration_save_error = "Das Skript oder die Suite konnte nicht gespeichert werden. ({0})\nMöglicherweise interferierte ein anderes Commit.\nVersuchen Sie es erneut.";
 m.__github_integration_overwrite_q = "Das Dokument {0} überschreiben?";
 m.__github_integration_file_gone = "Das Dokument {0} existiert nicht mehr.";
 m.__github_integration_save_suite_menu = "Auf GitHub speichern";
@@ -633,6 +633,10 @@ github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
           }
         }
       }
+    } else {
+      if (!txt) {
+        txt = github_integration.gitpanel.scriptToSave.seleniumVersion.io.defaultRepresentationExtension;
+      }
     }
     jQuery('#github-save-li').remove();
     jQuery('#github-save-li-format-div-2').remove();
@@ -673,6 +677,13 @@ github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
     var txt = jQuery('#github-save-suite-input').val();
     var sel = jQuery('#github-save-suite-input')[0] ? jQuery('#github-save-suite-input')[0].selectionStart : 0;
     var selEnd = jQuery('#github-save-suite-input')[0] ? jQuery('#github-save-suite-input')[0].selectionEnd : 0;
+    
+    if (github_integration.gitpanel.mode == github_integration.EXPORT) {
+      txt = txt || builder.suite.getCommonExportFormat().extension;
+    } else {
+      txt = txt || builder.suite.getCommonSeleniumVersion().getSaveSuiteFormat().extension;
+    }
+    
     jQuery('#github-save-suite-li').remove();
     jQuery('#github-save-suite-li-format-div-2').remove();
     jQuery('#repo-list-' + tree.id + '-ul').append(newNode('li', { 'id': 'github-save-suite-li', 'style': "padding-left: 12px;" },
