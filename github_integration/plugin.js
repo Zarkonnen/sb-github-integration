@@ -678,10 +678,10 @@ github_integration.gitpanel.populateTreeEntry = function(e, parent, tree) {
     var sel = jQuery('#github-save-suite-input')[0] ? jQuery('#github-save-suite-input')[0].selectionStart : 0;
     var selEnd = jQuery('#github-save-suite-input')[0] ? jQuery('#github-save-suite-input')[0].selectionEnd : 0;
     
-    if (github_integration.gitpanel.mode == github_integration.EXPORT) {
+    if (github_integration.gitpanel.mode == github_integration.EXPORT_SUITE) {
       txt = txt || builder.suite.getCommonExportFormat().extension;
     } else {
-      txt = txt || builder.suite.getCommonSeleniumVersion().getSaveSuiteFormat().extension;
+      txt = txt || builder.suite.getCommonSeleniumVersion().io.getSaveSuiteFormat().extension;
     }
     
     jQuery('#github-save-suite-li').remove();
@@ -956,7 +956,7 @@ github_integration.saveFile = function(script, path, eToReload, suppressOverwrit
   var pathBits = path.split("/");
   var name = pathBits[pathBits.length - 1];
   
-  format = format || script.seleniumVersion.io.getSaveFormat();
+  format = (mode == github_integration.EXPORT && format) ? format : script.seleniumVersion.io.getSaveFormat();
   
   github_integration.createScriptRepresentation(script, name, format, function(text) {
     github_integration.saveText(script, path, eToReload, suppressOverwriteWarning, format, text, mode);
