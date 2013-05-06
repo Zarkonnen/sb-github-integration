@@ -1,6 +1,6 @@
 {
   "headerVersion": 1,
-  "pluginVersion": "1.0.3",
+  "pluginVersion": "1.0.4",
   "builderMinVersion": "2.0.6",
   "builderMaxVersion": "2.0.6",
   "identifier": "github_integration",

@@ -391,6 +391,23 @@ github_integration.gitpanel.hide = function() {
   github_integration.gitpanel.dialog = null;
 };
 
+github_integration.gitpanel.getAllRepos = function(callback) {
+  github_integration.send("user/orgs", function(orgs) {
+    function getRepos(allRepos, i) {
+      if (i < orgs.length) {
+        github_integration.send("orgs/" + orgs[i].login + "/repos", function(data) {
+          getRepos(allRepos.concat(data), i + 1);
+        });
+      } else {
+        github_integration.send("user/repos", function(data) {
+          callback(allRepos.concat(data));
+        });
+      }
+    }
+    getRepos([], 0); 
+  });
+};
+
 github_integration.gitpanel.load = function(reload) {
   if (github_integration.repos.state == github_integration.LOADED && !reload) {
     github_integration.gitpanel.populateList();
@@ -401,7 +418,7 @@ github_integration.gitpanel.load = function(reload) {
     github_integration.lastLoadUsername = github_integration.getCredentials().username;
     github_integration.repos.state = github_integration.LOADING;
     jQuery('#repo-list-loading').show();
-    github_integration.send("user/repos", function(data) {
+    github_integration.gitpanel.getAllRepos(function(data) {
       github_integration.repos.state = github_integration.LOADED;
       jQuery('#repo-list-loading').hide();
       var username = github_integration.getCredentials().username;
