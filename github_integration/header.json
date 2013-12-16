@@ -1,8 +1,8 @@
 {
   "headerVersion": 1,
-  "pluginVersion": "1.0.9",
+  "pluginVersion": "1.0.10",
   "builderMinVersion": "2.1",
-  "builderMaxVersion": "2.1",
+  "builderMaxVersion": "2.1.1",
   "identifier": "github_integration",
   "name": "GitHub Integration",
   "description": "Store your tests on GitHub.",
