@@ -900,7 +900,7 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
           } else {
             data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
           }
-          data = FileUtils.getUnicodeConverter('UTF-8').ConvertToUnicode(data);
+          data = bridge.FileUtils.getUnicodeConverter('UTF-8').ConvertToUnicode(data);
           builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path }, github_integration.gitpanel.mode == github_integration.ADD, function(success) {
             github_integration.gitpanel.hide();
           });
@@ -933,7 +933,7 @@ github_integration.createScriptRepresentation = function(script, name, format, c
 github_integration.createSuiteRepresentation = function(scripts, path, format, suiteSeleniumVersion, isExport, callback) {
   path = { 'path': path, 'where': 'github' };
   if (suiteSeleniumVersion == builder.selenium1) {
-    var ts = new TestSuite();
+    var ts = new bridge.TestSuite();
     for (var i = 0; i < scripts.length; i++) {
       var script = scripts[i];
       var tc = builder.selenium1.adapter.convertScriptToTestCase(script);
