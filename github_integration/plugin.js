@@ -30,6 +30,7 @@ m.__github_integration_save_suite_as_menu = "Save to GitHub as...";
 m.__github_integration_export_suite_menu = "Export to GitHub";
 m.__github_integration_invalid_path = "{0} is not a valid GitHub integration path.";
 m.__github_integration_unable_to_load = "The file could not be loaded from GitHub: {0}";
+m.__github_integration_auth_code_prompt = "You have enabled two-factor authentication for this GitHub account. Please enter the authentication code you received.";
 
 // de
 m = builder.translate.locales['de'].mapping;
@@ -59,9 +60,9 @@ m.__github_integration_save_suite_as_menu = "Auf GitHub speichern als...";
 m.__github_integration_export_suite_menu = "Zu GitHub exportieren";
 m.__github_integration_invalid_path = "Der Pfad {0} ist ungültig.";
 m.__github_integration_unable_to_load = "Das Dokument konnte nicht geladen werden: {0}";
+m.__github_integration_auth_code_prompt = "Sie haben Zwei-Faktor-Authentifizierung aktiviert. Bitte geben Sie den Authentication-Code ein, den Sie gerade empfangen haben.";
 
 github_integration.shutdown = function() {
-  
 };
 
 builder.io.addStorageSystem({
@@ -161,6 +162,10 @@ github_integration.tryLoading = function(path, success, failure) {
   });
 };
 
+github_integration.getFileUtils = function() {
+  return bridge.FileUtils || bridge.SeFileUtils;
+};
+
 github_integration.loginManager = Components.classes["@mozilla.org/login-manager;1"].getService(Components.interfaces.nsILoginManager);
 
 github_integration.loginInfo = new Components.Constructor(
@@ -201,6 +206,46 @@ github_integration.setCredentials = function(username, password) {
     /*httprealm*/     'GitHub Integration User Login',
     /*username*/      username,
     /*password*/      password,
+    /*usernameField*/ "",
+    /*passwordField*/ ""
+  );
+  github_integration.loginManager.addLogin(loginInfo);
+};
+
+github_integration.getAuthToken = function(username) {
+  var logins = github_integration.loginManager.findLogins(
+    {},
+    /*hostname*/      'chrome://seleniumbuilder',
+    /*formSubmitURL*/ null,
+    /*httprealm*/     'GitHub Integration Auth Token'
+  );
+  
+  for (var i = 0; i < logins.length; i++) {
+    if (logins[i].username == username) {
+      return logins[i].password;
+    }
+  }
+  return null;
+};
+
+github_integration.setAuthToken = function(username, token) {
+  var logins = github_integration.loginManager.findLogins(
+    {},
+    /*hostname*/      'chrome://seleniumbuilder',
+    /*formSubmitURL*/ null,
+    /*httprealm*/     'GitHub Integration Auth Token'
+  );
+  
+  for (var i = 0; i < logins.length; i++) {
+    github_integration.loginManager.removeLogin(logins[i]);
+  }
+  
+  var loginInfo = new github_integration.loginInfo(
+    /*hostname*/      'chrome://seleniumbuilder',
+    /*formSubmitURL*/ null,
+    /*httprealm*/     'GitHub Integration Auth Token',
+    /*username*/      username,
+    /*password*/      token,
     /*usernameField*/ "",
     /*passwordField*/ ""
   );
@@ -392,14 +437,14 @@ github_integration.gitpanel.hide = function() {
 };
 
 github_integration.gitpanel.getAllRepos = function(callback) {
-  github_integration.send("user/orgs", function(orgs) {
+  github_integration.getPaginated("user/orgs", function(orgs) {
     function getRepos(allRepos, i) {
       if (i < orgs.length) {
-        github_integration.send("orgs/" + orgs[i].login + "/repos", function(data) {
+        github_integration.getPaginated("orgs/" + orgs[i].login + "/repos", function(data) {
           getRepos(allRepos.concat(data), i + 1);
         });
       } else {
-        github_integration.send("user/repos", function(data) {
+        github_integration.getPaginated("user/repos", function(data) {
           callback(allRepos.concat(data));
         });
       }
@@ -900,7 +945,7 @@ github_integration.gitpanel.openBlobEntry = function(e, parent, blob) {
           } else {
             data = bridge.decodeBase64(data.content.replace(/\n/g, ''));
           }
-          data = bridge.FileUtils.getUnicodeConverter('UTF-8').ConvertToUnicode(data);
+          data = github_integration.getFileUtils().getUnicodeConverter('UTF-8').ConvertToUnicode(data);
           builder.io.loadUnknownText(data, { 'where': 'github', 'path': blob.path }, github_integration.gitpanel.mode == github_integration.ADD, function(success) {
             github_integration.gitpanel.hide();
           });
@@ -1153,8 +1198,27 @@ github_integration.saveText = function(scriptOrScripts, path, eToReload, suppres
   });
 };
 
+github_integration.getPaginated = function(path, success, page, allData) {
+  if (!page) { page = 1; }
+  if (!allData) { allData = []; }
+  github_integration.send(path + "?page=" + page, function(data) {
+    if (data.length == 0) {
+      success(allData);
+    } else {
+      github_integration.getPaginated(path, success, page + 1, allData.concat(data));
+    }
+  });
+};
+
+github_integration.auth_token = null;
+github_integration.auth_token_username = null;
+
 github_integration.send = function(path, success, error, credentials, type, data, errorOverride) {
   credentials = credentials || github_integration.getCredentials();
+  if (!github_integration.auth_token || github_integration.auth_token_username != credentials.username) {
+    github_integration.auth_token = github_integration.getAuthToken(credentials.username);
+    github_integration.auth_token_username = credentials.username;
+  }
   var url = "https://api.github.com/" + path;
   if (!type || type == "GET") {
     if (path.indexOf('?') != -1) {
@@ -1165,17 +1229,59 @@ github_integration.send = function(path, success, error, credentials, type, data
   }
   var aj = {
     "type": type || "GET",
-    "headers": {"Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
+    "headers": github_integration.auth_token ? {"Authorization": "token " + github_integration.auth_token } : {"Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
     "url": url,
     "success": success,
     "error": function(jqXHR, textStatus, errorThrown) {
-      if (errorOverride) {
-        errorOverride(jqXHR, textStatus, errorThrown);
+      if (github_integration.auth_token || jqXHR.getAllResponseHeaders().indexOf("X-GitHub-OTP: required") != -1) {
+        github_integration.auth_token = null;
+        github_integration.auth_token_username = null;
+        jQuery.ajax({
+          "type": "POST",
+          "headers": {"Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
+          "url": "https://api.github.com/authorizations",
+          "data": JSON.stringify({"note": "SB GitHub Integration"}),
+          "success": function(data) {
+            github_integration.auth_token_username = credentials.username;
+            github_integration.auth_token = data.token;
+            github_integration.setAuthToken(credentials.username, data.token);
+            github_integration.send(path, success, error, credentials, type, data, errorOverride);
+          },
+          "error": function(jqXHR, textStatus, errorThrown) {
+            var code = prompt(_t("__github_integration_auth_code_prompt"));
+            jQuery.ajax({
+              "type": "POST",
+              "headers": {"X-GitHub-OTP": code, "Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
+              "url": "https://api.github.com/authorizations",
+              "data": JSON.stringify({"note": "Selenium Builder GitHub Integration " + new Date().getTime()}),
+              "success": function(data) {
+                github_integration.auth_token_username = credentials.username;
+                github_integration.auth_token = data.token;
+                github_integration.setAuthToken(credentials.username, data.token);
+                github_integration.send(path, success, error, credentials, type, data, errorOverride);
+              },
+              "error": function(jqXHR, textStatus, errorThrown) {
+                if (errorOverride) {
+                  errorOverride(jqXHR, textStatus, errorThrown);
+                } else {
+                  if (error) {
+                    error(jqXHR, textStatus, errorThrown);
+                  }
+                  alert(_t('__github_integration_connection_error', errorThrown));
+                }
+              }
+            });
+          }
+        });
       } else {
-        if (error) {
-          error(jqXHR, textStatus, errorThrown);
+        if (errorOverride) {
+          errorOverride(jqXHR, textStatus, errorThrown);
+        } else {
+          if (error) {
+            error(jqXHR, textStatus, errorThrown);
+          }
+          alert(_t('__github_integration_connection_error', errorThrown));
         }
-        alert(_t('__github_integration_connection_error', errorThrown));
       }
     }
   };
