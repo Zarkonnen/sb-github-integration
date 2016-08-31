@@ -297,6 +297,7 @@ github_integration.settingspanel.hide = function() {
 
 builder.registerPostLoadHook(function() {  
   builder.gui.addStartupEntry(_t('__github_integration_browse'), 'startup-browse-github', function() { github_integration.gitpanel.show(); });
+  builder.gui.addStartupEntry(_t('__github_integration_settings'), 'startup-settings-github', function() { github_integration.settingspanel.show(); });
   
   builder.gui.menu.addItem('file', _t('__github_integration_save_menu'), 'file-github_integration-save', function() {
     var script = builder.getScript();
@@ -469,7 +470,13 @@ github_integration.gitpanel.load = function(reload) {
       var username = github_integration.getCredentials().username;
       var l = [];
       github_integration.repos.list = l;
+      var fullnames = {};
       for (var i = 0; i < data.length; i++) {
+        if (fullnames[data[i].full_name]) {
+          continue;
+        } else {
+          fullnames[data[i].full_name] = 1;
+        }
         l.push({
           'name': data[i].full_name.toLowerCase().startsWith(username.toLowerCase() + "/") ? data[i].name : data[i].full_name,
           'id': data[i].full_name.replace('/', "-SLASH-"),
@@ -481,7 +488,7 @@ github_integration.gitpanel.load = function(reload) {
         });
       }
       l.sort(function(a, b) {
-        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+        return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : (a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0);
       });
       github_integration.gitpanel.populateList();
       jQuery('#repo-list-loading').hide();
