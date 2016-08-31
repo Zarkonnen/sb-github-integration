@@ -381,6 +381,7 @@ github_integration.VIEW = 6;
 
 github_integration.gitpanel = {};
 github_integration.gitpanel.dialog = null;
+github_integration.gitpanel.lastScrollTop = 0;
 github_integration.gitpanel.mode = github_integration.OPEN;
 github_integration.gitpanel.scriptToSave = null;
 github_integration.gitpanel.onReloadCallback = null;
@@ -424,7 +425,9 @@ github_integration.gitpanel.doShow = function(mode) {
     );
     builder.dialogs.show(github_integration.gitpanel.dialog);
   }
-  github_integration.gitpanel.load(/*reload*/ github_integration.getCredentials().username != github_integration.lastLoadUsername);
+  github_integration.gitpanel.load(/*reload*/ github_integration.getCredentials().username != github_integration.lastLoadUsername, function() {
+    jQuery('#repo-list').scrollTop(github_integration.gitpanel.lastScrollTop);
+  });
 };
 
 github_integration.gitpanel.editSettings = function() {
@@ -433,6 +436,9 @@ github_integration.gitpanel.editSettings = function() {
 };
 
 github_integration.gitpanel.hide = function() {
+  if (jQuery('#repo-list').is(":visible")) {
+    github_integration.gitpanel.lastScrollTop = jQuery('#repo-list').scrollTop() || 0;
+  }
   jQuery(github_integration.gitpanel.dialog).remove();
   github_integration.gitpanel.dialog = null;
 };
@@ -454,12 +460,13 @@ github_integration.gitpanel.getAllRepos = function(callback) {
   });
 };
 
-github_integration.gitpanel.load = function(reload) {
+github_integration.gitpanel.load = function(reload, callback) {
   if (github_integration.repos.state == github_integration.LOADED && !reload) {
     github_integration.gitpanel.populateList();
     jQuery('#repo-list-loading').hide();
     jQuery('#repo-list-settings').show();
     jQuery('#repo-list-reload').show();
+    if (callback) { callback(); }
   } else {
     github_integration.lastLoadUsername = github_integration.getCredentials().username;
     github_integration.repos.state = github_integration.LOADING;
@@ -494,6 +501,7 @@ github_integration.gitpanel.load = function(reload) {
       jQuery('#repo-list-loading').hide();
       jQuery('#repo-list-settings').show();
       jQuery('#repo-list-reload').show();
+      if (callback) { callback(); }
     },
     /*error*/ function(jqXHR, textStatus, errorThrown) {
       github_integration.repos.state = github_integration.UNLOADED;
