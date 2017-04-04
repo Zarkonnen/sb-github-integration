@@ -1227,6 +1227,10 @@ github_integration.getPaginated = function(path, success, page, allData) {
 
 github_integration.auth_token = null;
 github_integration.auth_token_username = null;
+Components.utils.import("resource://gre/modules/Console.jsm");
+github_integration.sendStatus = function(status) {
+  console.log(status);
+};
 
 github_integration.send = function(path, success, error, credentials, type, data, errorOverride) {
   credentials = credentials || github_integration.getCredentials();
@@ -1248,34 +1252,40 @@ github_integration.send = function(path, success, error, credentials, type, data
     "url": url,
     "success": success,
     "error": function(jqXHR, textStatus, errorThrown) {
+      github_integration.sendStatus(textStatus + " " + errorThrown + " " + url);
       if (github_integration.auth_token || jqXHR.getAllResponseHeaders().indexOf("X-GitHub-OTP: required") != -1) {
+        github_integration.sendStatus("Getting token " + url);
         github_integration.auth_token = null;
         github_integration.auth_token_username = null;
         jQuery.ajax({
           "type": "POST",
           "headers": {"Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
           "url": "https://api.github.com/authorizations",
-          "data": JSON.stringify({"note": "SB GitHub Integration"}),
+          "data": JSON.stringify({"note": "SB GitHub Integration", "scopes": ["repo"], "client_id": "3882bda36524a5261000", "client_secret": "a33e42e8f9cc35738b8a5e4928fcad8b34951f2c"}),
           "success": function(data) {
+            github_integration.sendStatus("Token acquired " + url);
             github_integration.auth_token_username = credentials.username;
             github_integration.auth_token = data.token;
             github_integration.setAuthToken(credentials.username, data.token);
             github_integration.send(path, success, error, credentials, type, data, errorOverride);
           },
           "error": function(jqXHR, textStatus, errorThrown) {
+            github_integration.sendStatus("Token not acquired, need OTP " + url);
             var code = prompt(_t("__github_integration_auth_code_prompt"));
             jQuery.ajax({
               "type": "POST",
               "headers": {"X-GitHub-OTP": code, "Authorization": "Basic " + btoa(credentials.username + ":" + credentials.password)},
               "url": "https://api.github.com/authorizations",
-              "data": JSON.stringify({"note": "Selenium Builder GitHub Integration " + new Date().getTime()}),
+              "data": JSON.stringify({"note": "SB GitHub Integration", "scopes": ["repo"], "client_id": "3882bda36524a5261000", "client_secret": "a33e42e8f9cc35738b8a5e4928fcad8b34951f2c"}),
               "success": function(data) {
+                github_integration.sendStatus("Headcanon accepted, token acquired " + url);
                 github_integration.auth_token_username = credentials.username;
                 github_integration.auth_token = data.token;
                 github_integration.setAuthToken(credentials.username, data.token);
                 github_integration.send(path, success, error, credentials, type, data, errorOverride);
               },
               "error": function(jqXHR, textStatus, errorThrown) {
+                github_integration.sendStatus("Headcanon rejected, token acquired " + url);
                 if (errorOverride) {
                   errorOverride(jqXHR, textStatus, errorThrown);
                 } else {
